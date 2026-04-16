@@ -1,0 +1,168 @@
+name: Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      severity-threshold:
+        description: "Minimum severity to gate on (LOW, MEDIUM, HIGH, CRITICAL)"
+        type: string
+        default: "MEDIUM"
+      codeql-languages:
+        description: "CodeQL languages, comma-separated (e.g. javascript-typescript,python)"
+        type: string
+        default: "javascript-typescript"
+      assign-copilot:
+        description: "Auto-assign created issues to Copilot for fixing"
+        type: boolean
+        default: true
+      trivy-scanners:
+        description: "Trivy scanners to enable (vuln,secret,misconfig)"
+        type: string
+        default: "vuln,secret,misconfig"
+      trivy-skip-dirs:
+        description: "Directories to skip in Trivy scan (comma-separated)"
+        type: string
+        default: ""
+      create-issues:
+        description: "Create GitHub issues for findings"
+        type: boolean
+        default: true
+      label:
+        description: "Label to apply to created issues"
+        type: string
+        default: "security"
+      dry-run:
+        description: "Log findings without creating issues"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+  actions: read
+
+jobs:
+  trivy:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: ${{ inputs.trivy-scanners }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          skip-dirs: ${{ inputs.trivy-skip-dirs }}
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+      - name: Upload Trivy SARIF as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-sarif
+          path: trivy-results.sarif
+          retention-days: 5
+
+  codeql-prep:
+    name: Prepare CodeQL Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Build language matrix
+        id: set-matrix
+        env:
+          LANGUAGES: ${{ inputs.codeql-languages }}
+        run: |
+          matrix=$(echo "$LANGUAGES" | tr ',' '\n' | jq -R . | jq -cs '.')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  codeql:
+    name: CodeQL Analysis
+    needs: codeql-prep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.codeql-prep.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql-${{ matrix.language }}
+          output: codeql-results
+          upload: always
+
+      - name: Upload CodeQL SARIF as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-sarif-${{ matrix.language }}
+          path: codeql-results/*.sarif
+          retention-days: 5
+
+  process-findings:
+    name: Process Findings
+    needs: [trivy, codeql]
+    if: always() && inputs.create-issues
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repo-sentinel (for processing script)
+        uses: actions/checkout@v4
+        with:
+          repository: codywilliamson/repo-sentinel
+          path: .sentinel
+          sparse-checkout: scripts
+
+      - name: Download all SARIF artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: sarif-results
+          pattern: "*-sarif*"
+          merge-multiple: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Process findings and create issues
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SEVERITY_THRESHOLD: ${{ inputs.severity-threshold }}
+          ASSIGN_COPILOT: ${{ inputs.assign-copilot }}
+          ISSUE_LABEL: ${{ inputs.label }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          SARIF_DIR: sarif-results
+        run: node .sentinel/scripts/process-findings.mjs

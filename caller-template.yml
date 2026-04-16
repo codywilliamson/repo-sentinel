@@ -1,0 +1,48 @@
+## repo-sentinel caller workflow
+## install: copy this to .github/workflows/security-scan.yml
+## docs: https://github.com/codywilliamson/repo-sentinel
+
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 6am UTC
+  workflow_dispatch: # manual trigger
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+  actions: read
+
+jobs:
+  security-scan:
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@main
+    with:
+      ## minimum severity to create issues for (LOW, MEDIUM, HIGH, CRITICAL)
+      severity-threshold: "MEDIUM"
+
+      ## codeql languages — comma-separated
+      ## common: javascript-typescript, python, go, java-kotlin, csharp, ruby, cpp, swift
+      codeql-languages: "javascript-typescript"
+
+      ## auto-assign issues to GitHub Copilot for fix attempts
+      assign-copilot: true
+
+      ## trivy scanners (vuln, secret, misconfig)
+      trivy-scanners: "vuln,secret,misconfig"
+
+      ## label for created issues
+      label: "security"
+
+      ## set true to preview findings without creating issues
+      # dry-run: true
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
+      actions: read
