@@ -84,19 +84,38 @@ async function ensureLabel() {
 
 async function createIssue(finding) {
   const body = buildIssueBody(finding);
-  const assignees = config.assignCopilot ? ["copilot"] : [];
 
-  const issue = await ghApi(`/repos/${owner}/${repo}/issues`, {
+  // try with copilot assignment first, fall back to unassigned
+  if (config.assignCopilot) {
+    try {
+      return await ghApi(`/repos/${owner}/${repo}/issues`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: finding.title,
+          body,
+          labels: [config.label],
+          assignees: ["copilot"],
+        }),
+      });
+    } catch (err) {
+      if (err.message.includes("422")) {
+        console.log(
+          "  copilot not available as assignee, creating without assignment"
+        );
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  return await ghApi(`/repos/${owner}/${repo}/issues`, {
     method: "POST",
     body: JSON.stringify({
       title: finding.title,
       body,
       labels: [config.label],
-      assignees,
     }),
   });
-
-  return issue;
 }
 
 // -- sarif parsing --
