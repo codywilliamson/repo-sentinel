@@ -17,7 +17,7 @@ irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/main/install.
 Options:
 
 ```bash
-./install.sh --ref "main" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
+./install.sh --ref "v0.2.0" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
 ```
 
 This drops a thin caller workflow into `.github/workflows/security-scan.yml` — all scanning logic stays in this repo. Installers support `--ref` / `-Ref` so you can stay on rolling `main` or pin a release tag for controlled upgrades.
@@ -74,22 +74,23 @@ Existing installs are easy to update because the caller workflow is intentionall
 1. Re-run the installer and overwrite `.github/workflows/security-scan.yml`, or manually update the `uses:` line in that file.
 2. Choose your ref strategy:
    - `@v0.1.0` to stay pinned to the current baseline release
-   - `@main` for rolling updates while the next release is being prepared
-   - `@<new-release-tag>` once the next tagged release is published
+   - `@v0.2.0` to adopt the new sticky PR comment feature set on a pinned release
+   - `@main` for rolling updates after `v0.2.0`
 3. Decide how you want to adopt PR comments:
    - Repos pinned to `@v0.1.0` keep the legacy issue-only behavior until they move to a newer ref
-   - Repos updated to `@main` or a newer release can leave `comment-pr-findings: true` to enable sticky PR comments
+   - Repos updated to `@v0.2.0` or `@main` can leave `comment-pr-findings: true` to enable sticky PR comments
    - Set `comment-pr-findings: false` if you want to keep the legacy issue-only behavior after updating
    - Set `pr-comment-copilot-tag: true` if you also want the PR comment to tag `@copilot`
 
-Example rolling-update caller:
+Example pinned upgrade:
 
 ```yaml
 jobs:
   security-scan:
-    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@main
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.2.0
     with:
-      comment-pr-findings: false
+      comment-pr-findings: true
+      pr-comment-copilot-tag: true
 ```
 
 For release notes and planned changes, see [CHANGELOG.md](CHANGELOG.md).

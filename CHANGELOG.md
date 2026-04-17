@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-17
+
 ### Added
 
 - Configurable sticky PR comments for pull request scan runs.
