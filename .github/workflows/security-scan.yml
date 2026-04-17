@@ -27,6 +27,14 @@ on:
         description: "Create GitHub issues for findings"
         type: boolean
         default: true
+      comment-pr-findings:
+        description: "Create or update a sticky PR comment with scan findings on pull request runs"
+        type: boolean
+        default: true
+      pr-comment-copilot-tag:
+        description: "Tag @copilot in PR comments when findings are present"
+        type: boolean
+        default: false
       label:
         description: "Label to apply to created issues"
         type: string
@@ -133,7 +141,7 @@ jobs:
   process-findings:
     name: Process Findings
     needs: [trivy, codeql]
-    if: always() && inputs.create-issues
+    if: always() && (inputs.create-issues || inputs.comment-pr-findings)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -164,7 +172,11 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           SEVERITY_THRESHOLD: ${{ inputs.severity-threshold }}
           ASSIGN_COPILOT: ${{ inputs.assign-copilot }}
+          CREATE_ISSUES: ${{ inputs.create-issues }}
+          COMMENT_ON_PR: ${{ inputs.comment-pr-findings }}
+          PR_COMMENT_COPILOT_TAG: ${{ inputs.pr-comment-copilot-tag }}
           ISSUE_LABEL: ${{ inputs.label }}
           DRY_RUN: ${{ inputs.dry-run }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
           SARIF_DIR: sarif-results
         run: node .sentinel/scripts/process-findings.mjs

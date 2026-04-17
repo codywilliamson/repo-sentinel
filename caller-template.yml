@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   security-scan:
-    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@main
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@__REPO_SENTINEL_REF__
     with:
       ## minimum severity to create issues for (LOW, MEDIUM, HIGH, CRITICAL)
       severity-threshold: "MEDIUM"
@@ -32,6 +32,12 @@ jobs:
 
       ## auto-assign issues to GitHub Copilot for fix attempts
       assign-copilot: true
+
+      ## create or update a sticky PR comment with scan findings on pull request runs
+      comment-pr-findings: true
+
+      ## optionally tag @copilot in the PR comment when findings are present
+      # pr-comment-copilot-tag: true
 
       ## trivy scanners (vuln, secret, misconfig)
       trivy-scanners: "vuln,secret,misconfig"

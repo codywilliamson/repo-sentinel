@@ -1,6 +1,6 @@
 # repo-sentinel
 
-Reusable GitHub Actions workflow that scans your repos with **Trivy** (dependency vulns, secrets, misconfig) and **CodeQL** (semantic code analysis), then auto-creates GitHub issues for findings and optionally assigns them to **Copilot Coding Agent** for automated fix attempts.
+Reusable GitHub Actions workflow that scans your repos with **Trivy** (dependency vulns, secrets, misconfig) and **CodeQL** (semantic code analysis), then creates GitHub issues for findings and can also keep a sticky PR comment updated on pull request runs. Both issue assignment and PR comments can optionally tag **Copilot** to help remediate findings.
 
 ## Install
 
@@ -17,10 +17,10 @@ irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/main/install.
 Options:
 
 ```bash
-./install.sh --languages "javascript-typescript,csharp" --threshold "HIGH" --no-copilot
+./install.sh --ref "main" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
 ```
 
-This drops a thin caller workflow into `.github/workflows/security-scan.yml` — all scanning logic stays in this repo.
+This drops a thin caller workflow into `.github/workflows/security-scan.yml` — all scanning logic stays in this repo. Installers support `--ref` / `-Ref` so you can stay on rolling `main` or pin a release tag for controlled upgrades.
 
 ## How it works
 
@@ -29,10 +29,11 @@ push/PR/schedule
   ├─ Trivy scan ──────► SARIF ──► GitHub Security tab
   ├─ CodeQL analysis ─► SARIF ──► GitHub Security tab
   └─ Process findings
+       ├─ Create/update sticky PR comment on PR runs (optional)
        ├─ Filter by severity threshold (default: MEDIUM+)
        ├─ Deduplicate against existing open issues
        ├─ Create GitHub issues with vuln details + remediation
-       └─ Assign to Copilot (if enabled)
+       └─ Assign/tag Copilot (if enabled)
 ```
 
 ## Configuration
@@ -44,11 +45,13 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 | `severity-threshold` | `MEDIUM` | Minimum severity to create issues (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) |
 | `codeql-languages` | `javascript-typescript` | Comma-separated CodeQL languages |
 | `assign-copilot` | `true` | Auto-assign issues to Copilot Coding Agent |
+| `comment-pr-findings` | `true` | Create or update a sticky PR comment on pull request runs |
+| `pr-comment-copilot-tag` | `false` | Tag `@copilot` in the PR comment when findings are present |
 | `trivy-scanners` | `vuln,secret,misconfig` | Trivy scanner types |
 | `trivy-skip-dirs` | `""` | Directories to skip |
 | `label` | `security` | Label applied to created issues |
 | `dry-run` | `false` | Log findings without creating issues |
-| `create-issues` | `true` | Enable/disable issue creation |
+| `create-issues` | `true` | Enable/disable issue creation while still allowing PR comments |
 
 ### Supported CodeQL languages
 
@@ -61,6 +64,35 @@ The installed workflow runs on:
 - Pull requests targeting `main`
 - Weekly schedule (Monday 6am UTC)
 - Manual dispatch from the Actions tab
+
+On pull request runs, repo-sentinel can keep one sticky PR comment updated with the latest findings summary. This avoids comment spam while still making scan results visible in the conversation.
+
+## Upgrade path
+
+Existing installs are easy to update because the caller workflow is intentionally thin.
+
+1. Re-run the installer and overwrite `.github/workflows/security-scan.yml`, or manually update the `uses:` line in that file.
+2. Choose your ref strategy:
+   - `@v0.1.0` to stay pinned to the current baseline release
+   - `@main` for rolling updates while the next release is being prepared
+   - `@<new-release-tag>` once the next tagged release is published
+3. Decide how you want to adopt PR comments:
+   - Repos pinned to `@v0.1.0` keep the legacy issue-only behavior until they move to a newer ref
+   - Repos updated to `@main` or a newer release can leave `comment-pr-findings: true` to enable sticky PR comments
+   - Set `comment-pr-findings: false` if you want to keep the legacy issue-only behavior after updating
+   - Set `pr-comment-copilot-tag: true` if you also want the PR comment to tag `@copilot`
+
+Example rolling-update caller:
+
+```yaml
+jobs:
+  security-scan:
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@main
+    with:
+      comment-pr-findings: false
+```
+
+For release notes and planned changes, see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
