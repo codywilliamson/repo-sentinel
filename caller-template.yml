@@ -17,6 +17,7 @@ permissions:
   contents: read
   security-events: write
   issues: write
+  pull-requests: write
   actions: read
 
 jobs:
@@ -51,4 +52,5 @@ jobs:
       contents: read
       security-events: write
       issues: write
+      pull-requests: write
       actions: read
