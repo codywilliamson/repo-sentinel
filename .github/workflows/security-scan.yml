@@ -146,6 +146,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout repo-sentinel (for processing script)
         uses: actions/checkout@v4
