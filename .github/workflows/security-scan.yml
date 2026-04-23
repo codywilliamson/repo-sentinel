@@ -48,6 +48,7 @@ permissions:
   contents: read
   security-events: write
   issues: write
+  pull-requests: write
   actions: read
 
 jobs:
@@ -146,6 +147,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout repo-sentinel (for processing script)
         uses: actions/checkout@v4
