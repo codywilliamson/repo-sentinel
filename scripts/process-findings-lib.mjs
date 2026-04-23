@@ -281,6 +281,15 @@ export function isPullRequestContext(config) {
   return Number.isInteger(config.pullRequestNumber) && config.pullRequestNumber > 0;
 }
 
+export function isGitHubIntegrationPermissionError(error) {
+  const message = error?.message || "";
+
+  return (
+    message.includes("GitHub API 403") &&
+    message.includes("Resource not accessible by integration")
+  );
+}
+
 export function createGitHubClient(config) {
   if (!config.token) {
     throw new Error("GITHUB_TOKEN is required");
@@ -429,6 +438,7 @@ export function createGitHubClient(config) {
 export async function processFindings(config, deps = {}) {
   const logger = deps.logger || console;
   const github = deps.github || createGitHubClient(config);
+  const warn = logger.warn ? logger.warn.bind(logger) : logger.log.bind(logger);
 
   logger.log(`repo-sentinel: processing findings for ${config.repo}`);
   logger.log(
@@ -512,20 +522,31 @@ export async function processFindings(config, deps = {}) {
   let prCommentAction = "skipped";
 
   if (config.commentOnPr && isPullRequestContext(config)) {
-    const body = buildPullRequestComment(findings, config);
-    const comments = await github.listPullRequestComments(config.pullRequestNumber);
-    const existingComment = comments.find((comment) =>
-      comment.body?.includes(PR_COMMENT_MARKER)
-    );
+    try {
+      const body = buildPullRequestComment(findings, config);
+      const comments = await github.listPullRequestComments(config.pullRequestNumber);
+      const existingComment = comments.find((comment) =>
+        comment.body?.includes(PR_COMMENT_MARKER)
+      );
 
-    if (existingComment) {
-      await github.updatePullRequestComment(existingComment.id, body);
-      prCommentAction = "updated";
-      logger.log(`  updated sticky PR comment on #${config.pullRequestNumber}`);
-    } else {
-      await github.createPullRequestComment(config.pullRequestNumber, body);
-      prCommentAction = "created";
-      logger.log(`  created sticky PR comment on #${config.pullRequestNumber}`);
+      if (existingComment) {
+        await github.updatePullRequestComment(existingComment.id, body);
+        prCommentAction = "updated";
+        logger.log(`  updated sticky PR comment on #${config.pullRequestNumber}`);
+      } else {
+        await github.createPullRequestComment(config.pullRequestNumber, body);
+        prCommentAction = "created";
+        logger.log(`  created sticky PR comment on #${config.pullRequestNumber}`);
+      }
+    } catch (error) {
+      if (!isGitHubIntegrationPermissionError(error)) {
+        throw error;
+      }
+
+      prCommentAction = "skipped-permissions";
+      warn(
+        `  skipped sticky PR comment on #${config.pullRequestNumber}: ${error.message}`
+      );
     }
   }
 

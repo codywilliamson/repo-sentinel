@@ -53,6 +53,8 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 | `dry-run` | `false` | Log findings without creating issues |
 | `create-issues` | `true` | Enable/disable issue creation while still allowing PR comments |
 
+Caller workflows should grant `pull-requests: write` alongside `issues: write` when `comment-pr-findings` is enabled.
+
 ### Supported CodeQL languages
 
 `javascript-typescript`, `python`, `go`, `java-kotlin`, `csharp`, `ruby`, `cpp`, `swift`
@@ -66,6 +68,8 @@ The installed workflow runs on:
 - Manual dispatch from the Actions tab
 
 On pull request runs, repo-sentinel can keep one sticky PR comment updated with the latest findings summary. This avoids comment spam while still making scan results visible in the conversation.
+
+Some GitHub contexts still expose a restricted `GITHUB_TOKEN` even when the workflow requests write permissions, especially forked pull requests and some bot-authored runs. In those cases repo-sentinel now logs a warning and skips the sticky PR comment instead of failing the entire job.
 
 ## Upgrade path
 

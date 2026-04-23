@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Sticky PR comment failures caused by restricted GitHub integration tokens now log a warning and do not fail the findings job.
+- The reusable workflow and caller template now request `pull-requests: write` when PR comments are enabled.
+
 ## [0.2.0] - 2026-04-17
 
 ### Added

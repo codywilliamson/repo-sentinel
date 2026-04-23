@@ -190,3 +190,46 @@ test("processFindings posts a clean PR comment when no findings meet the thresho
     assert.match(body, /No findings at `MEDIUM\+` severity were detected/);
   });
 });
+
+test("processFindings skips PR comments when GitHub denies integration access", async () => {
+  const github = createMockGithub();
+  github.createPullRequestComment = async () => {
+    throw new Error(
+      'GitHub API 403: {"message":"Resource not accessible by integration","status":"403"}'
+    );
+  };
+
+  await withSarifDir(buildSarifResult(), async (sarifDir) => {
+    const warnings = [];
+    const result = await processFindings(
+      {
+        repo: "octo/repo-sentinel",
+        threshold: "MEDIUM",
+        label: "security",
+        dryRun: false,
+        assignCopilot: false,
+        createIssues: false,
+        commentOnPr: true,
+        prCommentCopilotTag: false,
+        pullRequestNumber: 55,
+        sarifDir,
+      },
+      {
+        github,
+        logger: {
+          log() {},
+          warn(message) {
+            warnings.push(message);
+          },
+          error() {},
+        },
+      }
+    );
+
+    assert.equal(result.findingsCount, 1);
+    assert.equal(result.prCommentAction, "skipped-permissions");
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /skipped sticky PR comment on #55/);
+    assert.match(warnings[0], /Resource not accessible by integration/);
+  });
+});
