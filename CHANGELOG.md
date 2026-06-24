@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.2] - 2026-06-23
+
+### Fixed
+
+- Removed the unnecessary `pull-requests: write` permission from the reusable workflow and caller template. Sticky PR comments use GitHub issue comments and only need `issues: write`.
+
+### Changed
+
+- Split the findings processor into focused modules for config, SARIF parsing, issue body rendering, PR comment rendering, GitHub API access, and orchestration.
+
 ## [0.2.1] - 2026-04-22
 
 ### Fixed

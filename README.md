@@ -53,7 +53,7 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 | `dry-run` | `false` | Log findings without creating issues |
 | `create-issues` | `true` | Enable/disable issue creation while still allowing PR comments |
 
-Caller workflows should grant `pull-requests: write` alongside `issues: write` when `comment-pr-findings` is enabled.
+Caller workflows need `issues: write` for issue creation and sticky PR comments. repo-sentinel writes PR summaries through GitHub issue comments, so `pull-requests: write` is not required.
 
 ### Supported CodeQL languages
 
