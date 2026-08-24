@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.3] - 2026-08-24
+
+### Fixed
+
+- Neutralized scanner-provided usernames in generated issues so advisory credits and other untrusted text cannot trigger GitHub mention notifications.
+
 ## [0.2.2] - 2026-06-23
 
 ### Fixed
