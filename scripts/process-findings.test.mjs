@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PR_COMMENT_MARKER, processFindings } from "./process-findings-lib.mjs";
+import { createGitHubClient } from "./process-findings/github-client.mjs";
 
 function createMockGithub() {
   const calls = {
@@ -232,4 +233,51 @@ test("processFindings skips PR comments when GitHub denies integration access", 
     assert.match(warnings[0], /skipped sticky PR comment on #55/);
     assert.match(warnings[0], /Resource not accessible by integration/);
   });
+});
+
+test("issue creation neutralizes scanner-provided mentions", async () => {
+  let payload;
+  const github = createGitHubClient(
+    {
+      token: "test-token",
+      repo: "octo/repo-sentinel",
+      label: "security",
+      assignCopilot: false,
+    },
+    {
+      async fetch(url, options) {
+        assert.equal(url, "https://api.github.com/repos/octo/repo-sentinel/issues");
+        payload = JSON.parse(options.body);
+
+        return {
+          ok: true,
+          status: 201,
+          async json() {
+            return { number: 101 };
+          },
+        };
+      },
+    }
+  );
+
+  await github.createIssue({
+    title: "[HIGH] Reported by @scanner-author",
+    severity: "HIGH",
+    tool: "Trivy",
+    id: "CVE-2026-0001",
+    file: "pnpm-lock.yaml",
+    line: 1,
+    message: "Reported by @scanner-author via security@example.com.",
+    help: "Credits: &#64;first, &#x40;second, and &commat;third.",
+    helpUri: "https://github.com/@url-author/advisory",
+  });
+
+  assert.equal(payload.title, "[HIGH] Reported by @\u200bscanner-author");
+  assert.doesNotMatch(payload.body, /@(scanner-author|first|second|third)/);
+  assert.match(payload.body, /@\u200bscanner-author/);
+  assert.match(payload.body, /@\u200bfirst/);
+  assert.match(payload.body, /@\u200bsecond/);
+  assert.match(payload.body, /@\u200bthird/);
+  assert.match(payload.body, /security@example\.com/);
+  assert.match(payload.body, /https:\/\/github\.com\/@url-author\/advisory/);
 });

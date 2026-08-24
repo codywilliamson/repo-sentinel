@@ -1,5 +1,22 @@
 import { buildIssueBody } from "./issues.mjs";
 
+const ENCODED_AT_PATTERN = /&(?:#0*64|#x0*40|commat);/gi;
+const MENTION_PATTERN = /@(?=[A-Za-z0-9])/g;
+const URL_PREFIX_PATTERN = /(?:^|[\s(<])https?:\/\/\S*$/i;
+const ZERO_WIDTH_SPACE = "\u200b";
+
+function neutralizeMentions(value) {
+  const text = value.replace(ENCODED_AT_PATTERN, "@");
+
+  return text.replace(MENTION_PATTERN, (match, offset, source) => {
+    const previousCharacter = source[offset - 1] || "";
+    const isEmail = /[A-Za-z0-9_]/.test(previousCharacter);
+    const isUrl = URL_PREFIX_PATTERN.test(source.slice(0, offset));
+
+    return isEmail || isUrl ? match : `@${ZERO_WIDTH_SPACE}`;
+  });
+}
+
 export function isGitHubIntegrationPermissionError(error) {
   const message = error?.message || "";
 
@@ -21,10 +38,12 @@ function getRepoParts(repoSlug) {
 
 function createIssuePayload(finding, config, includeCopilotAssignee) {
   const payload = {
-    title: finding.title,
-    body: buildIssueBody(finding, {
-      assignCopilot: includeCopilotAssignee,
-    }),
+    title: neutralizeMentions(finding.title),
+    body: neutralizeMentions(
+      buildIssueBody(finding, {
+        assignCopilot: includeCopilotAssignee,
+      })
+    ),
     labels: [config.label],
   };
 
