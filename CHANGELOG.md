@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- Added a JSON-array `runner-labels` input for routing every scan and processing job to GitHub-hosted or repository-scoped self-hosted runners.
+- Added verified, no-sudo Trivy 0.69.3 installation with versioned binary caching and fresh Trivy database caching.
+- Added per-job temporary SARIF paths, bounded artifact retention, and immutable action references.
+
+### Changed
+
+- Pinned the processor checkout to the release-specific `v0.3.0` ref used by this workflow.
+- Installers now default to the v0.3.0 release, preserve existing workflows, and require an explicit backup-preserving update.
+- Fresh installs add a minimal Dependabot GitHub Actions schedule when no Dependabot configuration exists.
+
+### Security
+
+- Fork pull requests using custom or self-hosted runner selections are skipped so untrusted code cannot execute on those runners; recognized GitHub-hosted labels retain fork coverage.
+
 ## [0.2.3] - 2026-08-24
 
 ### Fixed

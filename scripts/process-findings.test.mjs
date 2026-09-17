@@ -98,6 +98,32 @@ async function withSarifDir(sarifPayload, callback) {
   }
 }
 
+test("processFindings dry-run reports findings without constructing a GitHub client", async () => {
+  await withSarifDir(buildSarifResult(), async (sarifDir) => {
+    const logs = [];
+    const result = await processFindings(
+      {
+        repo: "octo/repo-sentinel",
+        threshold: "MEDIUM",
+        label: "security",
+        dryRun: true,
+        assignCopilot: true,
+        createIssues: true,
+        commentOnPr: true,
+        prCommentCopilotTag: false,
+        pullRequestNumber: 17,
+        sarifDir,
+      },
+      { logger: { log(message) { logs.push(message); }, error() {} } }
+    );
+
+    assert.equal(result.findingsCount, 1);
+    assert.equal(result.createdIssues, 0);
+    assert.equal(result.prCommentAction, "dry-run");
+    assert.ok(logs.some((message) => String(message).includes("[DRY RUN]")));
+  });
+});
+
 test("processFindings creates a sticky PR comment on pull request runs", async () => {
   const github = createMockGithub();
 
