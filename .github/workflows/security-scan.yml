@@ -278,7 +278,7 @@ jobs:
         with:
           # Keep the processor tied to the same release-specific ref as this workflow.
           repository: codywilliamson/repo-sentinel
-          ref: v0.3.2
+          ref: v0.3.3
           persist-credentials: false
           path: .sentinel
           sparse-checkout: scripts

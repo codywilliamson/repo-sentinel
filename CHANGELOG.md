@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.3] - 2026-09-17
+
+### Changed
+
+- Updated the Trivy, upload-artifact, and download-artifact GitHub Actions dependencies.
+
 ## [0.3.2] - Unreleased
 
 ### Performance
