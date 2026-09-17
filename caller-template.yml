@@ -46,6 +46,9 @@ jobs:
       ## self-hosted example: '["self-hosted","Linux","X64","homelab","hp-main"]'
       runner-labels: '["ubuntu-latest"]'
 
+      ## opt into a repository-scoped local Trivy DB on trusted self-hosted runs
+      # persistent-trivy-cache: true
+
       ## label for created issues
       label: "security"
 

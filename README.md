@@ -53,6 +53,7 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 | `dry-run` | `false` | Log findings without creating issues |
 | `create-issues` | `true` | Enable/disable issue creation while still allowing PR comments |
 | `runner-labels` | `["ubuntu-latest"]` | JSON array of labels that must match the runner; use this to target a self-hosted runner |
+| `persistent-trivy-cache` | `false` | Opt into a repository-scoped local Trivy DB on trusted self-hosted runs |
 
 Caller workflows need `issues: write` for issue creation and sticky PR comments. repo-sentinel writes PR summaries through GitHub issue comments, so `pull-requests: write` is not required.
 
@@ -65,7 +66,7 @@ with:
   runner-labels: '["self-hosted","Linux","X64","homelab","hp-main"]'
 ```
 
-Self-hosted selections must be Linux x64 because the verified Trivy archive is Linux x64. They need Node.js 22.23.2, `bash`, `curl`, `tar`, `sha256sum`, and `jq`; CodeQL's supported language toolchains must also be available when autobuild needs them. The workflow installs Trivy 0.69.3 without sudo, verifies its release archive checksum, and caches the versioned binary. Its Trivy database is kept in a writable, repository-scoped `RUNNER_TOOL_CACHE` directory when available, with a per-job temporary fallback; hosted runners retain the existing fresh remote cache behavior. SARIF files use per-job paths under `runner.temp` and short-lived artifacts (five days).
+Self-hosted selections must be Linux x64 because the verified Trivy archive is Linux x64. They need Node.js 22.23.2, `bash`, `curl`, `tar`, `sha256sum`, and `jq`; CodeQL's supported language toolchains must also be available when autobuild needs them. The workflow installs Trivy 0.69.3 without sudo and verifies the release archive checksum. By default, self-hosted jobs use the existing fresh remote DB cache. Set `persistent-trivy-cache: true` only for a dedicated runner whose trusted jobs do not execute untrusted code; trusted push, schedule, and manual runs then use a writable repository-scoped `RUNNER_TOOL_CACHE` directory, while all pull requests use a temporary path and keep remote caching enabled. The persistent directory prevents cross-repository mixing but cannot isolate same-account workflow code. SARIF files use per-job paths under `runner.temp` and short-lived artifacts (five days).
 
 For safety, fork pull requests are skipped when a custom or self-hosted runner selection is used because their code must not execute on that runner. The recognized GitHub-hosted selections (`ubuntu-latest`, `ubuntu-22.04`, and `ubuntu-24.04`) retain fork coverage; push, schedule, manual, and same-repository pull request scans retain the complete Trivy and CodeQL matrix.
 

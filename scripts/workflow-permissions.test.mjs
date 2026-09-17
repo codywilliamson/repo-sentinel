@@ -62,7 +62,11 @@ test("security scan keeps exact tool versions and isolated bounded artifacts", a
   assert.match(reusable, /fallback="\$RUNNER_TEMP\/repo-sentinel\/trivy-db"/);
   assert.match(reusable, /id: trivy-cache/);
   assert.match(reusable, /RUNNER_ENVIRONMENT: \$\{\{ runner\.environment \}\}/);
+  assert.match(reusable, /GITHUB_EVENT_NAME: \$\{\{ github\.event_name \}\}/);
   assert.match(reusable, /CALLER_REPOSITORY_ID: \$\{\{ github\.repository_id \}\}/);
+  assert.match(reusable, /PERSISTENT_TRIVY_CACHE: \$\{\{ inputs\.persistent-trivy-cache \}\}/);
+  assert.match(reusable, /persistent-trivy-cache:[\s\S]*default: false/);
+  assert.match(reusable, /RUNNER_ENVIRONMENT.*self-hosted.*PERSISTENT_TRIVY_CACHE.*true.*GITHUB_EVENT_NAME.*pull_request/);
   assert.match(reusable, /candidate="\$RUNNER_TOOL_CACHE\/repo-sentinel\/trivy-db\/\$CALLER_REPOSITORY_ID"/);
   assert.match(reusable, /cache-enabled=\$cache_enabled/);
   assert.match(reusable, /TRIVY_CACHE_DIR=\$cache_dir/);

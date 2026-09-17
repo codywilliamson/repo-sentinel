@@ -4,7 +4,7 @@
 
 ### Performance
 
-- Reuse a repository-scoped Trivy database on self-hosted runners and disable the redundant remote cache round trip; hosted runners retain the existing fresh remote cache behavior.
+- Add an explicit `persistent-trivy-cache` opt-in for trusted self-hosted runs, reusing a repository-scoped Trivy database while keeping remote caching and pull-request isolation by default.
 
 ## [0.3.1] - Unreleased
 

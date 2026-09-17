@@ -47,6 +47,10 @@ on:
         description: "JSON array of runner labels (default uses GitHub-hosted runners)"
         type: string
         default: '["ubuntu-latest"]'
+      persistent-trivy-cache:
+        description: "Opt into a repository-scoped local Trivy DB on trusted self-hosted runs"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -80,19 +84,21 @@ jobs:
         id: trivy-cache
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           CALLER_REPOSITORY_ID: ${{ github.repository_id }}
+          PERSISTENT_TRIVY_CACHE: ${{ inputs.persistent-trivy-cache }}
         run: |
           set -euo pipefail
           fallback="$RUNNER_TEMP/repo-sentinel/trivy-db"
           cache_dir="$fallback"
           cache_enabled=true
-          if [[ "$RUNNER_ENVIRONMENT" == "self-hosted" ]]; then
-            cache_enabled=false
+          if [[ "$RUNNER_ENVIRONMENT" == "self-hosted" && "$PERSISTENT_TRIVY_CACHE" == "true" && "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
             if [[ -n "${RUNNER_TOOL_CACHE:-}" ]]; then
               candidate="$RUNNER_TOOL_CACHE/repo-sentinel/trivy-db/$CALLER_REPOSITORY_ID"
               mkdir -p "$candidate" 2>/dev/null || true
               if [[ -d "$candidate" && -w "$candidate" ]]; then
                 cache_dir="$candidate"
+                cache_enabled=false
               fi
             fi
           fi
