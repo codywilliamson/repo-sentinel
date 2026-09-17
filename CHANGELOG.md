@@ -16,7 +16,7 @@
 
 ### Security
 
-- Fork pull requests are skipped so untrusted code cannot execute on self-hosted runners.
+- Fork pull requests using custom or self-hosted runner selections are skipped so untrusted code cannot execute on those runners; recognized GitHub-hosted labels retain fork coverage.
 
 ## [0.2.3] - 2026-08-24
 

@@ -67,7 +67,7 @@ with:
 
 Self-hosted selections must be Linux x64 because the verified Trivy archive is Linux x64. They need Node.js 22.23.2, `bash`, `curl`, `tar`, `sha256sum`, and `jq`; CodeQL's supported language toolchains must also be available when autobuild needs them. The workflow installs Trivy 0.69.3 without sudo, verifies its release archive checksum, and caches the versioned binary plus Trivy databases. SARIF files use per-job paths under `runner.temp` and short-lived artifacts (five days).
 
-For safety, pull requests from forks are skipped because their code must not execute on a self-hosted runner. Push, schedule, manual, and same-repository pull request scans retain the complete Trivy and CodeQL matrix.
+For safety, fork pull requests are skipped when a custom or self-hosted runner selection is used because their code must not execute on that runner. The recognized GitHub-hosted selections (`ubuntu-latest`, `ubuntu-22.04`, and `ubuntu-24.04`) retain fork coverage; push, schedule, manual, and same-repository pull request scans retain the complete Trivy and CodeQL matrix.
 
 ### Supported CodeQL languages
 

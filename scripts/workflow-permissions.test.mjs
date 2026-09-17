@@ -38,9 +38,9 @@ test("security scan routes every job through the JSON runner-labels input", asyn
   assert.match(caller, /runner-labels: '\["ubuntu-latest"\]'/);
   assert.match(caller, /self-hosted.*Linux.*X64.*homelab.*hp-main/);
   assert.equal(
-    (reusable.match(/contains\(fromJSON\(inputs\.runner-labels\), 'self-hosted'\)/g) || []).length,
+    (reusable.match(/^\s+if: .*join\(fromJSON\(inputs\.runner-labels\), ','\).*$/gm) || []).length,
     4,
-    "fork protection should apply only when self-hosted labels are selected"
+    "fork protection should allow only the known hosted label selections"
   );
 });
 
@@ -57,6 +57,7 @@ test("security scan keeps exact tool versions and isolated bounded artifacts", a
   assert.match(reusable, /temporary_archive="\$\(mktemp "\$cache_root\/\.trivy-\$\{TRIVY_VERSION\}\.XXXXXX"\)"/);
   assert.match(reusable, /mv -- "\$temporary_archive" "\$archive"/);
   assert.match(reusable, /if \[\[ -f "\$archive" \]\] && ! echo "\$TRIVY_SHA256  \$archive"/);
+  assert.equal((reusable.match(/runner\.environment != 'github-hosted'/g) || []).length, 4);
   assert.match(reusable, /skip-setup-trivy: true/);
   assert.match(reusable, /cache-dir: \$\{\{ runner\.temp \}\}\/repo-sentinel\/trivy-db/);
   assert.match(reusable, /node-version: "22\.23\.2"/);
@@ -84,6 +85,8 @@ test("installers default to releases and preserve existing workflows", async () 
   assert.match(shell, /--update\)/);
   assert.match(shell, /repo-sentinel-backup/);
   assert.match(shell, /refusing to overwrite it/);
+  const shellUpdateLine = shell.split("\n").find((line) => line.includes("sed -E -i.bak"));
+  assert.ok(shellUpdateLine?.includes("\\\"'"), "Bash updater must exclude both YAML quote characters");
   assert.match(powershell, /\[string\]\$Ref = "v0\.3\.0"/);
   assert.match(powershell, /\$Branch = \$Ref/);
   assert.match(powershell, /\[switch\]\$Update/);

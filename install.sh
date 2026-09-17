@@ -92,7 +92,7 @@ if [[ -f "$OUTPUT_FILE" ]]; then
     cp -- "$OUTPUT_FILE" "$backup"
     echo "backup: ${backup}"
   fi
-  sed -E -i.bak "s|(${SENTINEL_REPO}/\.github/workflows/security-scan\.yml@)[^[:space:]\"]+|\1${REF}|g" "$OUTPUT_FILE"
+  sed -E -i.bak "s|(${SENTINEL_REPO}/\.github/workflows/security-scan\.yml@)[^[:space:]\"']+|\1${REF}|g" "$OUTPUT_FILE"
   rm -f -- "${OUTPUT_FILE}.bak"
   echo "updated: ${OUTPUT_FILE} (configuration preserved)"
 else

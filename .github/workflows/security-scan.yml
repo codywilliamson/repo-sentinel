@@ -60,11 +60,17 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner-labels) }}
     timeout-minutes: 30
     # Never execute pull-request code on a self-hosted runner when it comes from a fork.
-    if: contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-latest' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-22.04' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-24.04'
     permissions:
       contents: read
       security-events: write
     steps:
+      - name: Reject fork code on a self-hosted runner
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && runner.environment != 'github-hosted'
+        run: |
+          echo "Refusing to execute fork code on a self-hosted runner." >&2
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -138,11 +144,17 @@ jobs:
     name: Prepare CodeQL Matrix
     runs-on: ${{ fromJSON(inputs.runner-labels) }}
     timeout-minutes: 30
-    if: contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-latest' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-22.04' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-24.04'
     permissions: {}
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
+      - name: Reject fork code on a self-hosted runner
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && runner.environment != 'github-hosted'
+        run: |
+          echo "Refusing to execute fork code on a self-hosted runner." >&2
+          exit 1
+
       - name: Build language matrix
         id: set-matrix
         env:
@@ -156,7 +168,7 @@ jobs:
     needs: codeql-prep
     runs-on: ${{ fromJSON(inputs.runner-labels) }}
     timeout-minutes: 30
-    if: contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-latest' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-22.04' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-24.04'
     permissions:
       contents: read
       security-events: write
@@ -165,6 +177,12 @@ jobs:
       matrix:
         language: ${{ fromJSON(needs.codeql-prep.outputs.matrix) }}
     steps:
+      - name: Reject fork code on a self-hosted runner
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && runner.environment != 'github-hosted'
+        run: |
+          echo "Refusing to execute fork code on a self-hosted runner." >&2
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -204,13 +222,19 @@ jobs:
   process-findings:
     name: Process Findings
     needs: [trivy, codeql]
-    if: always() && (inputs.create-issues || inputs.comment-pr-findings) && (contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: always() && (inputs.create-issues || inputs.comment-pr-findings) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-latest' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-22.04' || join(fromJSON(inputs.runner-labels), ',') == 'ubuntu-24.04')
     runs-on: ${{ fromJSON(inputs.runner-labels) }}
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
     steps:
+      - name: Reject fork code on a self-hosted runner
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && runner.environment != 'github-hosted'
+        run: |
+          echo "Refusing to execute fork code on a self-hosted runner." >&2
+          exit 1
+
       - name: Checkout repo-sentinel (for processing script)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
