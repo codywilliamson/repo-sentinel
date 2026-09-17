@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2] - Unreleased
+
+### Performance
+
+- Add an explicit `persistent-trivy-cache` opt-in for trusted self-hosted runs, reusing a repository-scoped Trivy database while keeping remote caching and pull-request isolation by default.
+
 ## [0.3.1] - Unreleased
 
 ### Fixed
