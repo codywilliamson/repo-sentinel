@@ -76,6 +76,36 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Select Trivy database cache
+        id: trivy-cache
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          CALLER_REPOSITORY_ID: ${{ github.repository_id }}
+        run: |
+          set -euo pipefail
+          fallback="$RUNNER_TEMP/repo-sentinel/trivy-db"
+          cache_dir="$fallback"
+          cache_enabled=true
+          if [[ "$RUNNER_ENVIRONMENT" == "self-hosted" ]]; then
+            cache_enabled=false
+            if [[ -n "${RUNNER_TOOL_CACHE:-}" ]]; then
+              candidate="$RUNNER_TOOL_CACHE/repo-sentinel/trivy-db/$CALLER_REPOSITORY_ID"
+              mkdir -p "$candidate" 2>/dev/null || true
+              if [[ -d "$candidate" && -w "$candidate" ]]; then
+                cache_dir="$candidate"
+              fi
+            fi
+          fi
+          mkdir -p "$cache_dir"
+          if [[ ! -d "$cache_dir" || ! -w "$cache_dir" ]]; then
+            echo "Trivy cache directory is not writable: $cache_dir" >&2
+            exit 1
+          fi
+          echo "cache-dir=$cache_dir" >> "$GITHUB_OUTPUT"
+          echo "cache-enabled=$cache_enabled" >> "$GITHUB_OUTPUT"
+          echo "TRIVY_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
+          echo "TRIVY_CACHE_ENABLED=$cache_enabled" >> "$GITHUB_ENV"
+
       - name: Install pinned Trivy without sudo
         env:
           TRIVY_VERSION: "0.69.3"
@@ -83,7 +113,7 @@ jobs:
         run: |
           set -euo pipefail
           cache_root="$RUNNER_TEMP/repo-sentinel/trivy-cache"
-          if [[ -n "${RUNNER_TOOL_CACHE:-}" ]] && mkdir -p "$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache" 2>/dev/null; then
+          if [[ -n "${RUNNER_TOOL_CACHE:-}" ]] && mkdir -p "$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache" 2>/dev/null && test -d "$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache" && test -w "$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache"; then
             cache_root="$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache"
           else
             mkdir -p "$cache_root"
@@ -119,8 +149,8 @@ jobs:
           scanners: ${{ inputs.trivy-scanners }}
           format: sarif
           output: ${{ runner.temp }}/repo-sentinel/trivy-results.sarif
-          cache-dir: ${{ runner.temp }}/repo-sentinel/trivy-db
-          cache: true
+          cache-dir: ${{ env.TRIVY_CACHE_DIR }}
+          cache: ${{ env.TRIVY_CACHE_ENABLED }}
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           skip-dirs: ${{ inputs.trivy-skip-dirs }}
 
@@ -242,7 +272,7 @@ jobs:
         with:
           # Keep the processor tied to the same release-specific ref as this workflow.
           repository: codywilliamson/repo-sentinel
-          ref: v0.3.1
+          ref: v0.3.2
           persist-credentials: false
           path: .sentinel
           sparse-checkout: scripts

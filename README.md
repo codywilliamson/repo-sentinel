@@ -8,16 +8,16 @@ From your project root:
 
 ```bash
 # bash / macOS / Linux
-curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.1/install.sh | bash
+curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.2/install.sh | bash
 
 # powershell / Windows
-irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.1/install.ps1 | iex
+irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.2/install.ps1 | iex
 ```
 
 Options:
 
 ```bash
-./install.sh --ref "v0.3.1" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
+./install.sh --ref "v0.3.2" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
 ```
 
 This drops a thin caller workflow into `.github/workflows/security-scan.yml` — all scanning logic stays in this repo. Installers pin an exact release by default and also accept a full commit SHA for immutable deployments.
@@ -65,7 +65,7 @@ with:
   runner-labels: '["self-hosted","Linux","X64","homelab","hp-main"]'
 ```
 
-Self-hosted selections must be Linux x64 because the verified Trivy archive is Linux x64. They need Node.js 22.23.2, `bash`, `curl`, `tar`, `sha256sum`, and `jq`; CodeQL's supported language toolchains must also be available when autobuild needs them. The workflow installs Trivy 0.69.3 without sudo, verifies its release archive checksum, and caches the versioned binary plus Trivy databases. SARIF files use per-job paths under `runner.temp` and short-lived artifacts (five days).
+Self-hosted selections must be Linux x64 because the verified Trivy archive is Linux x64. They need Node.js 22.23.2, `bash`, `curl`, `tar`, `sha256sum`, and `jq`; CodeQL's supported language toolchains must also be available when autobuild needs them. The workflow installs Trivy 0.69.3 without sudo, verifies its release archive checksum, and caches the versioned binary. Its Trivy database is kept in a writable, repository-scoped `RUNNER_TOOL_CACHE` directory when available, with a per-job temporary fallback; hosted runners retain the existing fresh remote cache behavior. SARIF files use per-job paths under `runner.temp` and short-lived artifacts (five days).
 
 For safety, fork pull requests are skipped when a custom or self-hosted runner selection is used because their code must not execute on that runner. The recognized GitHub-hosted selections (`ubuntu-latest`, `ubuntu-22.04`, and `ubuntu-24.04`) retain fork coverage; push, schedule, manual, and same-repository pull request scans retain the complete Trivy and CodeQL matrix.
 
@@ -91,12 +91,12 @@ Existing installs are easy to update because the caller workflow is intentionall
 
 1. Re-run the installer to create a new workflow. Existing workflows are preserved; pass `--update` or `-Update` to update a repo-sentinel workflow ref. The installer writes a `.repo-sentinel-backup` before an update and refuses to overwrite unrelated workflows.
 2. Choose your ref strategy:
-   - pin to a release tag such as `@v0.3.1` for reproducible runs
+   - pin to a release tag such as `@v0.3.2` for reproducible runs
    - pin to a full commit SHA when your policy requires immutable references
    - use Dependabot's GitHub Actions update PRs to review later releases
 3. Decide how you want to adopt PR comments:
    - Repos pinned to an older release keep their existing behavior until they move to a newer ref
-   - Repos updated to `@v0.3.1` can leave `comment-pr-findings: true` to enable sticky PR comments
+   - Repos updated to `@v0.3.2` can leave `comment-pr-findings: true` to enable sticky PR comments
    - Set `comment-pr-findings: false` if you want to keep the legacy issue-only behavior after updating
    - Set `pr-comment-copilot-tag: true` if you also want the PR comment to tag `@copilot`
 
@@ -105,7 +105,7 @@ Example pinned upgrade:
 ```yaml
 jobs:
   security-scan:
-    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.3.1
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.3.2
     with:
       comment-pr-findings: true
       pr-comment-copilot-tag: true

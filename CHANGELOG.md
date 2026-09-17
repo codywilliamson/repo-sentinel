@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2] - Unreleased
+
+### Performance
+
+- Reuse a repository-scoped Trivy database on self-hosted runners and disable the redundant remote cache round trip; hosted runners retain the existing fresh remote cache behavior.
+
 ## [0.3.1] - Unreleased
 
 ### Fixed
