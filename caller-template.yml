@@ -42,6 +42,10 @@ jobs:
       ## trivy scanners (vuln, secret, misconfig)
       trivy-scanners: "vuln,secret,misconfig"
 
+      ## runner labels as a JSON array; all labels must match one runner
+      ## self-hosted example: '["self-hosted","Linux","X64","homelab","hp-main"]'
+      runner-labels: '["ubuntu-latest"]'
+
       ## label for created issues
       label: "security"
 

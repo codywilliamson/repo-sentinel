@@ -43,6 +43,10 @@ on:
         description: "Log findings without creating issues"
         type: boolean
         default: false
+      runner-labels:
+        description: "JSON array of runner labels (default uses GitHub-hosted runners)"
+        type: string
+        default: '["ubuntu-latest"]'
 
 permissions:
   contents: read
@@ -53,42 +57,89 @@ permissions:
 jobs:
   trivy:
     name: Trivy Scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner-labels) }}
+    timeout-minutes: 30
+    # Never execute pull-request code on a self-hosted runner when it comes from a fork.
+    if: contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Trivy without sudo
+        env:
+          TRIVY_VERSION: "0.69.3"
+          TRIVY_SHA256: "1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75"
+        run: |
+          set -euo pipefail
+          cache_root="$RUNNER_TEMP/repo-sentinel/trivy-cache"
+          if [[ -n "${RUNNER_TOOL_CACHE:-}" ]] && mkdir -p "$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache" 2>/dev/null; then
+            cache_root="$RUNNER_TOOL_CACHE/repo-sentinel/trivy-cache"
+          else
+            mkdir -p "$cache_root"
+          fi
+          install_dir="$RUNNER_TEMP/repo-sentinel/trivy/$TRIVY_VERSION"
+          archive="$cache_root/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          binary="$install_dir/trivy"
+          mkdir -p "$install_dir"
+          if [[ -f "$archive" ]] && ! echo "$TRIVY_SHA256  $archive" | sha256sum --check --strict; then
+            rm -f -- "$archive"
+          fi
+          if [[ ! -f "$archive" ]]; then
+            release="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+            temporary_archive="$(mktemp "$cache_root/.trivy-${TRIVY_VERSION}.XXXXXX")"
+            trap 'rm -f -- "$temporary_archive"' EXIT
+            curl --fail --location --retry 3 --connect-timeout 10 --max-time 60 \
+              "$release/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "$temporary_archive"
+            echo "$TRIVY_SHA256  $temporary_archive" | sha256sum --check --strict
+            mv -- "$temporary_archive" "$archive"
+          fi
+          # The cache stores only the archive. Verify it on every run before
+          # extracting a fresh per-job binary, including cache hits.
+          echo "$TRIVY_SHA256  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$install_dir" trivy
+          chmod 755 "$binary"
+          echo "$install_dir" >> "$GITHUB_PATH"
 
       - name: Run Trivy
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
+          skip-setup-trivy: true
           scan-type: fs
           scanners: ${{ inputs.trivy-scanners }}
           format: sarif
-          output: trivy-results.sarif
+          output: ${{ runner.temp }}/repo-sentinel/trivy-results.sarif
+          cache-dir: ${{ runner.temp }}/repo-sentinel/trivy-db
+          cache: true
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           skip-dirs: ${{ inputs.trivy-skip-dirs }}
 
       - name: Upload Trivy SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         if: always()
         continue-on-error: true
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: ${{ runner.temp }}/repo-sentinel/trivy-results.sarif
           category: trivy
 
       - name: Upload Trivy SARIF as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: trivy-sarif
-          path: trivy-results.sarif
+          path: ${{ runner.temp }}/repo-sentinel/trivy-results.sarif
           retention-days: 5
+          if-no-files-found: error
 
   codeql-prep:
     name: Prepare CodeQL Matrix
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner-labels) }}
+    timeout-minutes: 30
+    if: contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions: {}
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -103,7 +154,9 @@ jobs:
   codeql:
     name: CodeQL Analysis
     needs: codeql-prep
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner-labels) }}
+    timeout-minutes: 30
+    if: contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       security-events: write
@@ -112,59 +165,73 @@ jobs:
       matrix:
         language: ${{ fromJSON(needs.codeql-prep.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         with:
           languages: ${{ matrix.language }}
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+        uses: github/codeql-action/autobuild@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
-        continue-on-error: true
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         with:
           category: codeql-${{ matrix.language }}
-          output: codeql-results
-          upload: always
+          output: ${{ runner.temp }}/repo-sentinel/codeql-results
+          upload: never
+
+      - name: Upload CodeQL SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: ${{ runner.temp }}/repo-sentinel/codeql-results
+          category: codeql-${{ matrix.language }}
 
       - name: Upload CodeQL SARIF as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: codeql-sarif-${{ matrix.language }}
-          path: codeql-results/*.sarif
+          path: ${{ runner.temp }}/repo-sentinel/codeql-results/*.sarif
           retention-days: 5
+          if-no-files-found: error
 
   process-findings:
     name: Process Findings
     needs: [trivy, codeql]
-    if: always() && (inputs.create-issues || inputs.comment-pr-findings)
-    runs-on: ubuntu-latest
+    if: always() && (inputs.create-issues || inputs.comment-pr-findings) && (contains(fromJSON(inputs.runner-labels), 'self-hosted') == false || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ fromJSON(inputs.runner-labels) }}
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: write
     steps:
       - name: Checkout repo-sentinel (for processing script)
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Keep the processor tied to the same release-specific ref as this workflow.
           repository: codywilliamson/repo-sentinel
+          ref: v0.3.0
+          persist-credentials: false
           path: .sentinel
           sparse-checkout: scripts
 
       - name: Download all SARIF artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: sarif-results
+          path: ${{ runner.temp }}/repo-sentinel/sarif-results
           pattern: "*-sarif*"
           merge-multiple: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "22.23.2"
 
       - name: Process findings and create issues
         env:
@@ -178,5 +245,5 @@ jobs:
           ISSUE_LABEL: ${{ inputs.label }}
           DRY_RUN: ${{ inputs.dry-run }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
-          SARIF_DIR: sarif-results
+          SARIF_DIR: ${{ runner.temp }}/repo-sentinel/sarif-results
         run: node .sentinel/scripts/process-findings.mjs

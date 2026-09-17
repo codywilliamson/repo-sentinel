@@ -1,0 +1,27 @@
+name: Security Scan Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+  actions: read
+
+jobs:
+  security-scan:
+    name: Hosted security scan smoke
+    uses: ./.github/workflows/security-scan.yml
+    with:
+      create-issues: false
+      comment-pr-findings: false
+      dry-run: true
+      runner-labels: '["ubuntu-latest"]'
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
+      actions: read
