@@ -66,7 +66,6 @@ test("security scan keeps exact tool versions and isolated bounded artifacts", a
   assert.match(analyze[0], /upload: never/);
   assert.doesNotMatch(analyze[0], /continue-on-error/);
   assert.match(reusable, /repository: codywilliamson\/repo-sentinel/);
-  assert.match(reusable, /ref: v0\.3\.0/);
   assert.equal((reusable.match(/retention-days: 5/g) || []).length, 2);
   assert.equal((reusable.match(/if-no-files-found: error/g) || []).length, 2);
   assert.doesNotMatch(reusable, /pull_request_target/);
@@ -79,19 +78,33 @@ test("security scan keeps exact tool versions and isolated bounded artifacts", a
 test("installers default to releases and preserve existing workflows", async () => {
   const shell = await readFile(new URL("../install.sh", import.meta.url), "utf8");
   const powershell = await readFile(new URL("../install.ps1", import.meta.url), "utf8");
+  const version = (await readFile(new URL("../VERSION", import.meta.url), "utf8")).trim();
+  const tag = `v${version}`;
 
-  assert.match(shell, /REF="v0\.3\.0"/);
+  assert.match(shell, new RegExp(`REF="${tag}"`));
   assert.match(shell, /SENTINEL_BRANCH="\$REF"/);
   assert.match(shell, /--update\)/);
   assert.match(shell, /repo-sentinel-backup/);
   assert.match(shell, /refusing to overwrite it/);
   const shellUpdateLine = shell.split("\n").find((line) => line.includes("sed -E -i.bak"));
   assert.ok(shellUpdateLine?.includes("\\\"'"), "Bash updater must exclude both YAML quote characters");
-  assert.match(powershell, /\[string\]\$Ref = "v0\.3\.0"/);
+  assert.match(powershell, new RegExp(`\\[string\\]\\$Ref = "${tag}"`));
   assert.match(powershell, /\$Branch = \$Ref/);
   assert.match(powershell, /\[switch\]\$Update/);
   assert.match(powershell, /repo-sentinel-backup/);
   assert.match(powershell, /refusing to overwrite it/);
+});
+
+test("private SARIF uploads retain actions read on scanner jobs", async () => {
+  const reusable = await readFile(workflowFiles[0][1], "utf8");
+  const trivy = reusable.match(/  trivy:[\s\S]*?(?=\n  codeql-prep:)/)?.[0];
+  const codeql = reusable.match(/  codeql:[\s\S]*?(?=\n  process-findings:)/)?.[0];
+
+  assert.ok(trivy, "Trivy job should be present");
+  assert.ok(codeql, "CodeQL job should be present");
+  for (const [name, job] of [["Trivy", trivy], ["CodeQL", codeql]]) {
+    assert.match(job, /permissions:\s*\n\s+contents: read\s*\n\s+security-events: write\s*\n\s+actions: read/, `${name} must retain actions: read for private SARIF metadata`);
+  }
 });
 
 test("release references stay coherent with VERSION", async () => {

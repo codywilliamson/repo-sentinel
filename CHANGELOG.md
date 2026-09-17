@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1] - Unreleased
+
+### Fixed
+
+- Retained `actions: read` on Trivy and CodeQL jobs so SARIF uploads work in private repositories.
+
 ## [0.3.0] - Unreleased
 
 ### Added

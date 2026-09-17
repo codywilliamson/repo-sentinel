@@ -64,6 +64,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     steps:
       - name: Reject fork code on a self-hosted runner
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && runner.environment != 'github-hosted'
@@ -172,6 +173,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -240,7 +242,7 @@ jobs:
         with:
           # Keep the processor tied to the same release-specific ref as this workflow.
           repository: codywilliamson/repo-sentinel
-          ref: v0.3.0
+          ref: v0.3.1
           persist-credentials: false
           path: .sentinel
           sparse-checkout: scripts
