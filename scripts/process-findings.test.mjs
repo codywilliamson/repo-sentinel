@@ -6,10 +6,12 @@ import { join } from "node:path";
 
 import { PR_COMMENT_MARKER, processFindings } from "./process-findings-lib.mjs";
 import { createGitHubClient } from "./process-findings/github-client.mjs";
+import { getIssueMarker } from "./process-findings/issues.mjs";
 
 function createMockGithub() {
   const calls = {
     createIssue: [],
+    closeIssue: [],
     createPullRequestComment: [],
     updatePullRequestComment: [],
   };
@@ -17,12 +19,16 @@ function createMockGithub() {
   return {
     calls,
     async ensureLabel() {},
+    existingIssues: [],
     async getExistingIssues() {
-      return [];
+      return this.existingIssues;
     },
     async createIssue(finding) {
       calls.createIssue.push(finding);
       return { number: 101 };
+    },
+    async closeIssue(number) {
+      calls.closeIssue.push(number);
     },
     async listPullRequestComments() {
       return [];
@@ -306,4 +312,99 @@ test("issue creation neutralizes scanner-provided mentions", async () => {
   assert.match(payload.body, /@\u200bthird/);
   assert.match(payload.body, /security@example\.com/);
   assert.match(payload.body, /https:\/\/github\.com\/@url-author\/advisory/);
+});
+
+
+test("complete default-branch scan closes only owned issues absent from current findings", async () => {
+  const github = createMockGithub();
+  const config = {
+    repo: "octo/repo-sentinel",
+    threshold: "MEDIUM",
+    label: "security",
+    dryRun: false,
+    assignCopilot: false,
+    createIssues: true,
+    closeResolvedIssues: true,
+    fullDefaultBranchScan: true,
+    commentOnPr: false,
+    pullRequestNumber: 0,
+  };
+  const active = { id: "js/sql-injection", file: "src/db.js", tool: "CodeQL" };
+  const resolved = { id: "js/old-bug", file: "src/old.js", tool: "CodeQL" };
+  github.existingIssues = [
+    { number: 1, title: "old title for active finding", body: getIssueMarker(config, active) },
+    { number: 2, title: "resolved", body: getIssueMarker(config, resolved) },
+    { number: 3, title: "manual security issue", body: "No repo-sentinel marker" },
+    { number: 4, title: "other scan profile", body: getIssueMarker({ ...config, trivyScanners: "secret" }, resolved) },
+    { number: 5, title: "pull request", body: getIssueMarker(config, resolved), pull_request: { url: "https://example.com" } },
+    { number: 6, title: "other skipped directories", body: getIssueMarker({ ...config, trivySkipDirs: "docs" }, resolved) },
+  ];
+
+  await withSarifDir(buildSarifResult(), async (sarifDir) => {
+    const result = await processFindings({ ...config, sarifDir }, {
+      github,
+      logger: { log() {}, error() {} },
+    });
+    assert.equal(result.findingsCount, 1);
+    assert.equal(result.createdIssues, 0);
+    assert.equal(result.skippedIssues, 1);
+    assert.equal(result.closedIssues, 1);
+    assert.deepEqual(github.calls.closeIssue, [2]);
+  });
+});
+
+test("clean default-branch scan closes owned issues, but partial and PR scans cannot", async () => {
+  const config = {
+    repo: "octo/repo-sentinel",
+    threshold: "MEDIUM",
+    label: "security",
+    dryRun: false,
+    assignCopilot: false,
+    createIssues: true,
+    closeResolvedIssues: true,
+    fullDefaultBranchScan: true,
+    commentOnPr: false,
+    pullRequestNumber: 0,
+  };
+  const oldIssue = {
+    number: 42,
+    title: "resolved finding",
+    body: getIssueMarker(config, { id: "js/old-bug", file: "src/old.js", tool: "CodeQL" }),
+  };
+  await withSarifDir(buildSarifResult({ severity: "0.5" }), async (sarifDir) => {
+    for (const [name, overrides, expectedClosed] of [
+      ["full scan", {}, 1],
+      ["partial scan", { fullDefaultBranchScan: false }, 0],
+      ["PR scan", { pullRequestNumber: 17 }, 0],
+      ["disabled", { closeResolvedIssues: false }, 0],
+    ]) {
+      const github = createMockGithub();
+      github.existingIssues = [oldIssue];
+      const result = await processFindings({ ...config, ...overrides, sarifDir }, {
+        github,
+        logger: { log() {}, error() {} },
+      });
+      assert.equal(result.closedIssues, expectedClosed, name);
+      assert.equal(github.calls.closeIssue.length, expectedClosed, name);
+    }
+  });
+});
+
+test("closing a resolved issue uses GitHub's completed state", async () => {
+  let request;
+  const github = createGitHubClient({
+    token: "test-token",
+    repo: "octo/repo-sentinel",
+    label: "security",
+    assignCopilot: false,
+  }, {
+    async fetch(url, options) {
+      request = { url, options };
+      return { ok: true, status: 200, async json() { return {}; } };
+    },
+  });
+  await github.closeIssue(42);
+  assert.equal(request.url, "https://api.github.com/repos/octo/repo-sentinel/issues/42");
+  assert.equal(request.options.method, "PATCH");
+  assert.deepEqual(JSON.parse(request.options.body), { state: "closed", state_reason: "completed" });
 });

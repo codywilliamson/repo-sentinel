@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.4] - 2026-09-26
+
+### Fixed
+
+- Fresh installers detect the consumer repository's default branch for push and pull request scans, with an explicit branch option when remote detection is unavailable.
+
+### Added
+
+- Optional resolved-issue cleanup after a complete default-branch scan. It only closes issues created with the same scanner profile; partial scans, pull requests, and older unmarked issues are left alone.
+
 ## [0.3.3] - 2026-09-17
 
 ### Changed

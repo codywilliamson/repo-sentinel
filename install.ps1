@@ -7,7 +7,7 @@
 .PARAMETER Languages
     CodeQL languages, comma-separated (default: javascript-typescript)
 .PARAMETER Ref
-    Workflow git ref to pin, such as v0.3.3 or a full commit SHA (default: v0.3.3)
+    Workflow git ref to pin, such as v0.3.4 or a full commit SHA (default: v0.3.4)
 .PARAMETER Threshold
     Minimum severity to create issues for: LOW, MEDIUM, HIGH, CRITICAL (default: MEDIUM)
 .PARAMETER NoCopilot
@@ -18,19 +18,22 @@
     Tag @copilot in PR comments when findings are present
 .PARAMETER Update
     Update an existing repo-sentinel workflow ref while preserving its configuration
+.PARAMETER DefaultBranch
+    Branch for fresh-install push and pull request triggers (detected from origin when omitted)
 .EXAMPLE
-    irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.3/install.ps1 | iex
+    irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.ps1 | iex
 .EXAMPLE
-    ./install.ps1 -Ref "v0.3.3" -Languages "javascript-typescript,python" -Threshold "HIGH"
+    ./install.ps1 -Ref "v0.3.4" -Languages "javascript-typescript,python" -Threshold "HIGH"
 #>
 param(
-    [string]$Ref = "v0.3.3",
+    [string]$Ref = "v0.3.4",
     [string]$Languages = "javascript-typescript",
     [string]$Threshold = "MEDIUM",
     [switch]$NoCopilot,
     [switch]$NoPrComments,
     [switch]$PrCommentCopilot,
-    [switch]$Update
+    [switch]$Update,
+    [string]$DefaultBranch = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +86,23 @@ if (Test-Path $OutputFile) {
     Set-Content -LiteralPath $OutputFile -Value $updated -NoNewline
     Write-Host "Updated: $OutputFile (configuration preserved)"
 } else {
+    if (-not $DefaultBranch) {
+        $remoteHead = git ls-remote --symref origin HEAD 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not determine the default branch from origin. Pass -DefaultBranch explicitly."
+        }
+        $headLine = $remoteHead | Where-Object { $_ -match '^ref:\s+refs/heads/([^\s]+)\s+HEAD$' } | Select-Object -First 1
+        if ($headLine -match '^ref:\s+refs/heads/([^\s]+)\s+HEAD$') {
+            $DefaultBranch = $Matches[1]
+        }
+    }
+    if ($DefaultBranch -notmatch '^[A-Za-z0-9._/-]+$') {
+        throw "Could not determine a safe default branch from origin. Pass -DefaultBranch explicitly."
+    }
+    git check-ref-format --branch $DefaultBranch 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Invalid default branch: $DefaultBranch"
+    }
     New-Item -ItemType Directory -Path $WorkflowDir -Force | Out-Null
 
     Write-Host "Downloading workflow template..."
@@ -98,6 +118,7 @@ if (Test-Path $OutputFile) {
     # leaves existing consumer choices untouched.
     $content = Get-Content -LiteralPath $OutputFile -Raw
     $content = $content -replace '__REPO_SENTINEL_REF__', $Ref
+    $content = $content.Replace('__DEFAULT_BRANCH__', $DefaultBranch)
 
     if ($Languages -ne "javascript-typescript") {
         $content = $content -replace 'codeql-languages: "javascript-typescript"', "codeql-languages: `"$Languages`""
@@ -146,7 +167,7 @@ Write-Host "Workflow ref: $Ref"
 Write-Host ""
 Write-Host "What happens next:"
 Write-Host "  1. Commit and push this workflow"
-Write-Host "  2. Scans run on push to main, PRs, and weekly"
+Write-Host "  2. Scans run on the configured push and PR branches, and weekly"
 Write-Host "  3. Findings at $Threshold+ severity create GitHub issues"
 if ($EnablePrComments) {
     Write-Host "  4. Pull request runs create or update a sticky PR comment"

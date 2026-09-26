@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # repo-sentinel installer
-# usage: curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.3/install.sh | bash
-# or:    ./install.sh [--ref "v0.3.3"] [--languages "javascript-typescript,python"] [--threshold "MEDIUM"] [--no-copilot]
+# usage: curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.sh | bash
+# or:    ./install.sh [--ref "v0.3.4"] [--languages "javascript-typescript,python"] [--threshold "MEDIUM"] [--no-copilot]
 
 SENTINEL_REPO="codywilliamson/repo-sentinel"
 SENTINEL_BRANCH=""
@@ -14,13 +14,14 @@ DEPENDABOT_DIR=".github"
 DEPENDABOT_FILE="${DEPENDABOT_DIR}/dependabot.yml"
 
 # defaults
-REF="v0.3.3"
+REF="v0.3.4"
 LANGUAGES="javascript-typescript"
 THRESHOLD="MEDIUM"
 COPILOT="true"
 PR_COMMENTS="true"
 PR_COMMENT_COPILOT="false"
 UPDATE="false"
+DEFAULT_BRANCH=""
 
 replace_in_file() {
   local from="$1"
@@ -39,19 +40,21 @@ while [[ $# -gt 0 ]]; do
     --no-pr-comments) PR_COMMENTS="false"; shift ;;
     --pr-comment-copilot) PR_COMMENT_COPILOT="true"; shift ;;
     --update) UPDATE="true"; shift ;;
+    --default-branch) DEFAULT_BRANCH="$2"; shift 2 ;;
     --help|-h)
       echo "repo-sentinel installer"
       echo ""
       echo "usage: install.sh [options]"
       echo ""
       echo "options:"
-      echo "  --ref <git-ref>       Workflow ref to pin (default: v0.3.3)"
+      echo "  --ref <git-ref>       Workflow ref to pin (default: v0.3.4)"
       echo "  --languages <langs>   CodeQL languages (default: javascript-typescript)"
       echo "  --threshold <level>   Severity threshold: LOW, MEDIUM, HIGH, CRITICAL (default: MEDIUM)"
       echo "  --no-copilot          Don't auto-assign issues to Copilot"
       echo "  --no-pr-comments      Don't create sticky PR comments on pull request runs"
       echo "  --pr-comment-copilot  Tag @copilot in PR comments when findings are present"
       echo "  --update              Update an existing repo-sentinel workflow (creates a backup)"
+      echo "  --default-branch <name>  Branch for fresh-install push and PR triggers"
       echo "  --help                Show this help"
       exit 0
       ;;
@@ -96,6 +99,13 @@ if [[ -f "$OUTPUT_FILE" ]]; then
   rm -f -- "${OUTPUT_FILE}.bak"
   echo "updated: ${OUTPUT_FILE} (configuration preserved)"
 else
+  if [[ -z "$DEFAULT_BRANCH" ]]; then
+    DEFAULT_BRANCH="$(git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub(/^refs\/heads\//, "", $2); print $2; exit }')" || true
+  fi
+  if [[ -z "$DEFAULT_BRANCH" || ! "$DEFAULT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || ! git check-ref-format --branch "$DEFAULT_BRANCH" >/dev/null 2>&1; then
+    echo "error: could not determine a safe default branch from origin; pass --default-branch explicitly" >&2
+    exit 2
+  fi
   mkdir -p "$WORKFLOW_DIR"
   temp_template="$(mktemp)"
   trap 'rm -f -- "$temp_template"' EXIT
@@ -106,6 +116,7 @@ else
   # apply user config only when creating a workflow; --update intentionally
   # leaves existing consumer choices untouched.
   replace_in_file "__REPO_SENTINEL_REF__" "$REF"
+  replace_in_file "__DEFAULT_BRANCH__" "$DEFAULT_BRANCH"
 
   if [[ "$LANGUAGES" != "javascript-typescript" ]]; then
     replace_in_file "codeql-languages: \"javascript-typescript\"" "codeql-languages: \"${LANGUAGES}\""
@@ -150,7 +161,7 @@ echo "workflow ref: ${REF}"
 echo ""
 echo "what happens next:"
 echo "  1. commit and push this workflow"
-echo "  2. scans run on push to main, PRs, and weekly"
+echo "  2. scans run on the configured push and PR branches, and weekly"
 echo "  3. findings at ${THRESHOLD}+ severity create GitHub issues"
 if [[ "$PR_COMMENTS" == "true" ]]; then
   echo "  4. pull request runs create or update a sticky PR comment"

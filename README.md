@@ -8,16 +8,16 @@ From your project root:
 
 ```bash
 # bash / macOS / Linux
-curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.3/install.sh | bash
+curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.sh | bash
 
 # powershell / Windows
-irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.3/install.ps1 | iex
+irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.ps1 | iex
 ```
 
 Options:
 
 ```bash
-./install.sh --ref "v0.3.3" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
+./install.sh --ref "v0.3.4" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
 ```
 
 This drops a thin caller workflow into `.github/workflows/security-scan.yml` — all scanning logic stays in this repo. Installers pin an exact release by default and also accept a full commit SHA for immutable deployments.
@@ -33,6 +33,7 @@ push/PR/schedule
        ├─ Filter by severity threshold (default: MEDIUM+)
        ├─ Deduplicate against existing open issues
        ├─ Create GitHub issues with vuln details + remediation
+       ├─ Close resolved, owned issues after a complete default-branch scan (opt-in)
        └─ Assign/tag Copilot (if enabled)
 ```
 
@@ -45,6 +46,7 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 | `severity-threshold` | `MEDIUM` | Minimum severity to create issues (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) |
 | `codeql-languages` | `javascript-typescript` | Comma-separated CodeQL languages |
 | `assign-copilot` | `true` | Auto-assign issues to Copilot Coding Agent |
+| `close-resolved-issues` | `false` | Close marked issues when their findings disappear from a complete default-branch scan with the same scanner settings |
 | `comment-pr-findings` | `true` | Create or update a sticky PR comment on pull request runs |
 | `pr-comment-copilot-tag` | `false` | Tag `@copilot` in the PR comment when findings are present |
 | `trivy-scanners` | `vuln,secret,misconfig` | Trivy scanner types |
@@ -54,6 +56,8 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 | `create-issues` | `true` | Enable/disable issue creation while still allowing PR comments |
 | `runner-labels` | `["ubuntu-latest"]` | JSON array of labels that must match the runner; use this to target a self-hosted runner |
 | `persistent-trivy-cache` | `false` | Opt into a repository-scoped local Trivy DB on trusted self-hosted runs |
+
+Resolved-issue closure is opt-in. It runs only after both Trivy and CodeQL succeed on the default branch, and only touches repo-sentinel issues created with the same severity threshold, Trivy scanner set and skipped directories, and CodeQL languages. Older issues have no scan marker and require one-time manual review. Pull request runs and incomplete scans never close issues.
 
 Caller workflows need `issues: write` for issue creation and sticky PR comments. repo-sentinel writes PR summaries through GitHub issue comments, so `pull-requests: write` is not required.
 
@@ -76,9 +80,11 @@ For safety, fork pull requests are skipped when a custom or self-hosted runner s
 
 ## Triggers
 
+Fresh installs detect `origin`'s default branch for both branch filters. Pass `--default-branch master` or `-DefaultBranch master` if the remote HEAD cannot be read. The installer stops rather than generating an inactive workflow when the branch cannot be determined.
+
 The installed workflow runs on:
-- Push to `main`
-- Pull requests targeting `main`
+- Push to the Git remote default branch
+- Pull requests targeting that branch
 - Weekly schedule (Monday 6am UTC)
 - Manual dispatch from the Actions tab
 
@@ -90,14 +96,14 @@ Some GitHub contexts still expose a restricted `GITHUB_TOKEN` even when the work
 
 Existing installs are easy to update because the caller workflow is intentionally thin.
 
-1. Re-run the installer to create a new workflow. Existing workflows are preserved; pass `--update` or `-Update` to update a repo-sentinel workflow ref. The installer writes a `.repo-sentinel-backup` before an update and refuses to overwrite unrelated workflows.
+1. Re-run the installer to create a new workflow. Existing workflows are preserved; pass `--update` or `-Update` to update a repo-sentinel workflow ref. Updates preserve existing branch filters, so change any stale `main` filters to your repository's actual default branch when upgrading. The installer writes a `.repo-sentinel-backup` before an update and refuses to overwrite unrelated workflows.
 2. Choose your ref strategy:
-   - pin to a release tag such as `@v0.3.3` for reproducible runs
+   - pin to a release tag such as `@v0.3.4` for reproducible runs
    - pin to a full commit SHA when your policy requires immutable references
    - use Dependabot's GitHub Actions update PRs to review later releases
 3. Decide how you want to adopt PR comments:
    - Repos pinned to an older release keep their existing behavior until they move to a newer ref
-   - Repos updated to `@v0.3.3` can leave `comment-pr-findings: true` to enable sticky PR comments
+   - Repos updated to `@v0.3.4` can leave `comment-pr-findings: true` to enable sticky PR comments
    - Set `comment-pr-findings: false` if you want to keep the legacy issue-only behavior after updating
    - Set `pr-comment-copilot-tag: true` if you also want the PR comment to tag `@copilot`
 
@@ -106,7 +112,7 @@ Example pinned upgrade:
 ```yaml
 jobs:
   security-scan:
-    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.3.3
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.3.4
     with:
       comment-pr-findings: true
       pr-comment-copilot-tag: true

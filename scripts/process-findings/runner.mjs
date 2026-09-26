@@ -1,5 +1,6 @@
 import { createGitHubClient, isGitHubIntegrationPermissionError } from "./github-client.mjs";
 import { buildPullRequestComment, isPullRequestContext, PR_COMMENT_MARKER } from "./pr-comments.mjs";
+import { getIssueMarker, getIssueProfilePrefix } from "./issues.mjs";
 import { dedupeFindings, findSarifFiles, parseSarif } from "./sarif.mjs";
 
 function getWarnLogger(logger) {
@@ -40,6 +41,7 @@ function buildNoSarifResult() {
     findingsCount: 0,
     createdIssues: 0,
     skippedIssues: 0,
+    closedIssues: 0,
     prCommentAction: "skipped",
   };
 }
@@ -62,24 +64,30 @@ function buildDryRunResult(config, findings, logger) {
     findingsCount: findings.length,
     createdIssues: 0,
     skippedIssues: 0,
+    closedIssues: 0,
     prCommentAction: "dry-run",
   };
 }
 
-async function createIssuesForFindings(config, github, findings, logger) {
+async function syncIssuesForFindings(config, github, findings, logger) {
   let createdIssues = 0;
   let skippedIssues = 0;
+  let closedIssues = 0;
+  const canClose = config.createIssues && config.closeResolvedIssues &&
+    config.fullDefaultBranchScan && !isPullRequestContext(config);
 
-  if (!config.createIssues || findings.length === 0) {
-    return { createdIssues, skippedIssues };
+  if (!config.createIssues || (findings.length === 0 && !canClose)) {
+    return { createdIssues, skippedIssues, closedIssues };
   }
 
   await github.ensureLabel();
   const existingIssues = await github.getExistingIssues();
   const existingTitles = new Set(existingIssues.map((issue) => issue.title));
+  const activeMarkers = new Set(findings.map((finding) => getIssueMarker(config, finding)));
 
   for (const finding of findings) {
-    if (existingTitles.has(finding.title)) {
+    const marker = getIssueMarker(config, finding);
+    if (existingTitles.has(finding.title) || existingIssues.some((issue) => issue.body?.includes(marker))) {
       logger.log(`  skip (exists): ${finding.title}`);
       skippedIssues += 1;
       continue;
@@ -90,14 +98,27 @@ async function createIssuesForFindings(config, github, findings, logger) {
       logger.log(`  created #${issue.number}: ${finding.title}`);
       createdIssues += 1;
     } catch (error) {
-      logger.error(
-        `  failed to create issue: ${finding.title}`,
-        error.message
-      );
+      logger.error(`  failed to create issue: ${finding.title}`, error.message);
     }
   }
 
-  return { createdIssues, skippedIssues };
+  if (canClose) {
+    const profilePrefix = getIssueProfilePrefix(config);
+    for (const issue of existingIssues) {
+      if (issue.pull_request || !issue.body?.includes(profilePrefix)) continue;
+      if ([...activeMarkers].some((marker) => issue.body.includes(marker))) continue;
+
+      try {
+        await github.closeIssue(issue.number);
+        logger.log(`  closed resolved issue #${issue.number}`);
+        closedIssues += 1;
+      } catch (error) {
+        logger.error(`  failed to close resolved issue #${issue.number}`, error.message);
+      }
+    }
+  }
+
+  return { createdIssues, skippedIssues, closedIssues };
 }
 
 async function upsertPullRequestComment(config, github, findings, logger, warn) {
@@ -151,7 +172,7 @@ export async function processFindings(config, deps = {}) {
   }
 
   const github = deps.github || createGitHubClient(config);
-  const { createdIssues, skippedIssues } = await createIssuesForFindings(
+  const { createdIssues, skippedIssues, closedIssues } = await syncIssuesForFindings(
     config,
     github,
     findings,
@@ -166,13 +187,14 @@ export async function processFindings(config, deps = {}) {
   );
 
   logger.log(
-    `\n  done: ${createdIssues} issue(s) created, ${skippedIssues} skipped, PR comment ${prCommentAction}`
+    `\n  done: ${createdIssues} issue(s) created, ${skippedIssues} skipped, ${closedIssues} closed, PR comment ${prCommentAction}`
   );
 
   return {
     findingsCount: findings.length,
     createdIssues,
     skippedIssues,
+    closedIssues,
     prCommentAction,
   };
 }

@@ -1,4 +1,4 @@
-import { buildIssueBody } from "./issues.mjs";
+import { buildIssueBody, getIssueMarker } from "./issues.mjs";
 
 const ENCODED_AT_PATTERN = /&(?:#0*64|#x0*40|commat);/gi;
 const MENTION_PATTERN = /@(?=[A-Za-z0-9])/g;
@@ -42,6 +42,7 @@ function createIssuePayload(finding, config, includeCopilotAssignee) {
     body: neutralizeMentions(
       buildIssueBody(finding, {
         assignCopilot: includeCopilotAssignee,
+        issueMarker: getIssueMarker(config, finding),
       })
     ),
     labels: [config.label],
@@ -157,6 +158,12 @@ export function createGitHubClient(config, deps = {}) {
 
         throw error;
       }
+    },
+    async closeIssue(issueNumber) {
+      return ghApi(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
+        method: "PATCH",
+        body: JSON.stringify({ state: "closed", state_reason: "completed" }),
+      });
     },
     async listPullRequestComments(pullRequestNumber) {
       return listPaginated(
