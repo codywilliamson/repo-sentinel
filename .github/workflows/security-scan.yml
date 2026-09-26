@@ -27,6 +27,10 @@ on:
         description: "Create GitHub issues for findings"
         type: boolean
         default: true
+      close-resolved-issues:
+        description: "Close owned issues absent from a complete default-branch scan"
+        type: boolean
+        default: false
       comment-pr-findings:
         description: "Create or update a sticky PR comment with scan findings on pull request runs"
         type: boolean
@@ -278,7 +282,7 @@ jobs:
         with:
           # Keep the processor tied to the same release-specific ref as this workflow.
           repository: codywilliamson/repo-sentinel
-          ref: v0.3.3
+          ref: v0.3.4
           persist-credentials: false
           path: .sentinel
           sparse-checkout: scripts
@@ -302,6 +306,11 @@ jobs:
           SEVERITY_THRESHOLD: ${{ inputs.severity-threshold }}
           ASSIGN_COPILOT: ${{ inputs.assign-copilot }}
           CREATE_ISSUES: ${{ inputs.create-issues }}
+          CLOSE_RESOLVED_ISSUES: ${{ inputs.close-resolved-issues }}
+          FULL_DEFAULT_BRANCH_SCAN: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.trivy.result == 'success' && needs.codeql.result == 'success' }}
+          TRIVY_SCANNERS: ${{ inputs.trivy-scanners }}
+          TRIVY_SKIP_DIRS: ${{ inputs.trivy-skip-dirs }}
+          CODEQL_LANGUAGES: ${{ inputs.codeql-languages }}
           COMMENT_ON_PR: ${{ inputs.comment-pr-findings }}
           PR_COMMENT_COPILOT_TAG: ${{ inputs.pr-comment-copilot-tag }}
           ISSUE_LABEL: ${{ inputs.label }}

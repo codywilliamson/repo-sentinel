@@ -1,4 +1,28 @@
-export function buildIssueBody(finding, { assignCopilot = false } = {}) {
+import { createHash } from "node:crypto";
+
+function digest(value) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 20);
+}
+
+function sortedCsv(value, fallback) {
+  return String(value || fallback).split(",").map((part) => part.trim()).filter(Boolean).sort();
+}
+
+export function getIssueProfilePrefix(config) {
+  const profile = JSON.stringify({
+    threshold: config.threshold || "MEDIUM",
+    trivyScanners: sortedCsv(config.trivyScanners, "vuln,secret,misconfig"),
+    trivySkipDirs: sortedCsv(config.trivySkipDirs, ""),
+    codeqlLanguages: sortedCsv(config.codeqlLanguages, "javascript-typescript"),
+  });
+  return `<!-- repo-sentinel:issue:${digest(profile)}:`;
+}
+
+export function getIssueMarker(config, finding) {
+  return `${getIssueProfilePrefix(config)}${digest(`${finding.id}::${finding.file}::${finding.tool}`)} -->`;
+}
+
+export function buildIssueBody(finding, { assignCopilot = false, issueMarker = "" } = {}) {
   const severityBadge = {
     CRITICAL: "🔴 Critical",
     HIGH: "🟠 High",
@@ -7,6 +31,7 @@ export function buildIssueBody(finding, { assignCopilot = false } = {}) {
   };
 
   const lines = [
+    ...(issueMarker ? [issueMarker, ""] : []),
     `## ${severityBadge[finding.severity] || finding.severity} Security Finding`,
     "",
     `**Scanner:** ${finding.tool}`,

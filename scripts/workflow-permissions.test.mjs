@@ -143,3 +143,15 @@ test("hosted smoke workflow never enables findings writes", async () => {
   assert.match(smoke, /dry-run: true/);
   assert.match(smoke, /runner-labels: '\["ubuntu-latest"\]'/);
 });
+
+
+test("resolved-issue cleanup is gated on complete scans of the caller default branch", async () => {
+  const reusable = await readFile(workflowFiles[0][1], "utf8");
+  const caller = await readFile(workflowFiles[1][1], "utf8");
+
+  assert.match(reusable, /close-resolved-issues:[\s\S]*default: false/);
+  assert.match(reusable, /FULL_DEFAULT_BRANCH_SCAN: .*github\.event\.repository\.default_branch.*needs\.trivy\.result == 'success'.*needs\.codeql\.result == 'success'/);
+  assert.match(reusable, /CLOSE_RESOLVED_ISSUES: \$\{\{ inputs\.close-resolved-issues \}\}/);
+  assert.match(caller, /close-resolved-issues: false/);
+  assert.equal((caller.match(/branches: \["__DEFAULT_BRANCH__"\]/g) || []).length, 2);
+});

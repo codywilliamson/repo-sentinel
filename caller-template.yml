@@ -1,14 +1,14 @@
 ## repo-sentinel caller workflow
-## install: copy this to .github/workflows/security-scan.yml
+## install: use install.sh or install.ps1 to fill the release and default-branch placeholders
 ## docs: https://github.com/codywilliamson/repo-sentinel
 
 name: Security Scan
 
 on:
   push:
-    branches: [main]
+    branches: ["__DEFAULT_BRANCH__"]
   pull_request:
-    branches: [main]
+    branches: ["__DEFAULT_BRANCH__"]
   schedule:
     - cron: "0 6 * * 1" # weekly, Monday 6am UTC
   workflow_dispatch: # manual trigger
@@ -48,6 +48,9 @@ jobs:
 
       ## opt into a repository-scoped local Trivy DB on trusted self-hosted runs
       # persistent-trivy-cache: true
+
+      ## close owned issues resolved by a complete default-branch scan
+      close-resolved-issues: false
 
       ## label for created issues
       label: "security"
