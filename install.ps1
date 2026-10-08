@@ -7,7 +7,7 @@
 .PARAMETER Languages
     CodeQL languages, comma-separated (default: javascript-typescript)
 .PARAMETER Ref
-    Workflow git ref to pin, such as v0.3.4 or a full commit SHA (default: v0.3.4)
+    Workflow git ref to pin, such as v0.3.5 or a full commit SHA (default: v0.3.5)
 .PARAMETER Threshold
     Minimum severity to create issues for: LOW, MEDIUM, HIGH, CRITICAL (default: MEDIUM)
 .PARAMETER NoCopilot
@@ -21,12 +21,12 @@
 .PARAMETER DefaultBranch
     Branch for fresh-install push and pull request triggers (detected from origin when omitted)
 .EXAMPLE
-    irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.ps1 | iex
+    irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.5/install.ps1 | iex
 .EXAMPLE
-    ./install.ps1 -Ref "v0.3.4" -Languages "javascript-typescript,python" -Threshold "HIGH"
+    ./install.ps1 -Ref "v0.3.5" -Languages "javascript-typescript,python" -Threshold "HIGH"
 #>
 param(
-    [string]$Ref = "v0.3.4",
+    [string]$Ref = "v0.3.5",
     [string]$Languages = "javascript-typescript",
     [string]$Threshold = "MEDIUM",
     [switch]$NoCopilot,

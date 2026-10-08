@@ -36,8 +36,8 @@ function getRepoParts(repoSlug) {
   return { owner, repo };
 }
 
-function createIssuePayload(finding, config, includeCopilotAssignee) {
-  const payload = {
+function createIssueContent(finding, config, includeCopilotAssignee) {
+  return {
     title: neutralizeMentions(finding.title),
     body: neutralizeMentions(
       buildIssueBody(finding, {
@@ -45,6 +45,12 @@ function createIssuePayload(finding, config, includeCopilotAssignee) {
         issueMarker: getIssueMarker(config, finding),
       })
     ),
+  };
+}
+
+function createIssuePayload(finding, config, includeCopilotAssignee) {
+  const payload = {
+    ...createIssueContent(finding, config, includeCopilotAssignee),
     labels: [config.label],
   };
 
@@ -133,7 +139,7 @@ export function createGitHubClient(config, deps = {}) {
     async getExistingIssues() {
       return listPaginated(
         (page) =>
-          `/repos/${owner}/${repo}/issues?labels=${encodedLabel}&state=open&per_page=100&page=${page}`
+          `/repos/${owner}/${repo}/issues?labels=${encodedLabel}&state=all&per_page=100&page=${page}`
       );
     },
     async createIssue(finding) {
@@ -158,6 +164,27 @@ export function createGitHubClient(config, deps = {}) {
 
         throw error;
       }
+    },
+    async updateIssue(issue, finding) {
+      const wasAssignedToCopilot = Boolean(issue.body?.includes("Assigned to Copilot"));
+      const content = createIssueContent(finding, config, wasAssignedToCopilot);
+      const currentBody = (issue.body || "").replaceAll("\r\n", "\n");
+
+      if (issue.title === content.title && currentBody === content.body) {
+        return false;
+      }
+
+      await ghApi(`/repos/${owner}/${repo}/issues/${issue.number}`, {
+        method: "PATCH",
+        body: JSON.stringify(content),
+      });
+      return true;
+    },
+    async reopenIssue(issueNumber) {
+      return ghApi(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
+        method: "PATCH",
+        body: JSON.stringify({ state: "open" }),
+      });
     },
     async closeIssue(issueNumber) {
       return ghApi(`/repos/${owner}/${repo}/issues/${issueNumber}`, {

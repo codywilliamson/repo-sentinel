@@ -45,6 +45,16 @@ export function buildIssueBody(finding, { assignCopilot = false, issueMarker = "
     "",
   ];
 
+  if (finding.vulnerabilities) {
+    lines.push("### Vulnerabilities", "");
+    for (const vuln of finding.vulnerabilities) {
+      const fixed = vuln.fixedVersion ? ` (fixed in ${vuln.fixedVersion})` : "";
+      const link = vuln.helpUri ? ` - ${vuln.helpUri}` : "";
+      lines.push(`- **${vuln.severity}** \`${vuln.id}\`${fixed}${link}`);
+    }
+    lines.push("");
+  }
+
   if (finding.help) {
     lines.push("### Remediation Guidance", "", finding.help, "");
   }
