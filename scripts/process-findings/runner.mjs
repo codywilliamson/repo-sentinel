@@ -77,19 +77,56 @@ function isClosed(issue) {
   return issue.state === "closed";
 }
 
-// newest-first list: prefer an open match, else the newest closed one
-function findIssueForFinding(config, issues, finding) {
-  const marker = getIssueMarker(config, finding);
-  const byMarker = issues.filter((issue) => issue.body?.includes(marker));
-  const candidates = byMarker.length > 0
-    ? byMarker
-    : issues.filter((issue) => issue.title === finding.title && !issue.body?.includes(FOREIGN_MARKER_PREFIX));
-
-  return candidates.find((issue) => !isClosed(issue)) || candidates[0];
+function isOpen(issue) {
+  return !isClosed(issue);
 }
 
-async function syncFinding(config, github, issues, finding, logger, counts) {
-  const issue = findIssueForFinding(config, issues, finding);
+function isSuppressed(issue) {
+  return isClosed(issue) && issue.state_reason === NOT_PLANNED;
+}
+
+function includesAnyMarker(issue, markers) {
+  return markers.some((marker) => issue.body?.includes(marker));
+}
+
+// grouped findings also recognise the per-cve markers that v0.3.4 filed
+function findLegacyIssues(config, issues, finding) {
+  const markers = (finding.vulnerabilities || []).map((vuln) =>
+    getIssueMarker(config, { id: vuln.id, file: finding.file, tool: finding.tool })
+  );
+  const legacy = issues.filter((issue) => includesAnyMarker(issue, markers));
+  const usable = legacy.filter((issue) => isOpen(issue) || !isSuppressed(issue));
+  const chosen = usable.find(isOpen) || usable[0] || legacy[0];
+
+  return { issue: chosen, duplicates: legacy.filter((issue) => isOpen(issue) && issue !== chosen) };
+}
+
+// newest-first list: prefer an open match, else the newest closed one
+function findIssueForFinding(config, issues, finding) {
+  const byMarker = issues.filter((issue) => includesAnyMarker(issue, [getIssueMarker(config, finding)]));
+  if (byMarker.length > 0) {
+    return { issue: byMarker.find(isOpen) || byMarker[0], duplicates: [] };
+  }
+
+  const legacy = findLegacyIssues(config, issues, finding);
+  if (legacy.issue) return legacy;
+
+  const byTitle = issues.filter((issue) => issue.title === finding.title && !issue.body?.includes(FOREIGN_MARKER_PREFIX));
+  return { issue: byTitle.find(isOpen) || byTitle[0], duplicates: [] };
+}
+
+async function closeDuplicates(github, duplicates, issue, logger, counts) {
+  for (const duplicate of duplicates) {
+    await github.commentOnIssue(duplicate.number, `Superseded by the grouped dependency issue #${issue.number}.`);
+    await github.closeIssue(duplicate.number);
+    duplicate.state = "closed";
+    logger.log(`  closed #${duplicate.number} as duplicate of #${issue.number}`);
+    counts.closedIssues += 1;
+  }
+}
+
+async function syncFinding(config, github, issues, finding, logger, counts, claimed) {
+  const { issue, duplicates } = findIssueForFinding(config, issues, finding);
 
   if (!issue) {
     const created = await github.createIssue(finding);
@@ -98,7 +135,9 @@ async function syncFinding(config, github, issues, finding, logger, counts) {
     return;
   }
 
-  if (isClosed(issue) && issue.state_reason === NOT_PLANNED) {
+  claimed.add(issue.number);
+
+  if (isSuppressed(issue)) {
     logger.log(`  skip (closed as not planned #${issue.number}): ${finding.title}`);
     counts.skippedIssues += 1;
     return;
@@ -117,13 +156,15 @@ async function syncFinding(config, github, issues, finding, logger, counts) {
     logger.log(`  skip (up to date #${issue.number}): ${finding.title}`);
     counts.skippedIssues += 1;
   }
+
+  await closeDuplicates(github, duplicates, issue, logger, counts);
 }
 
-async function closeResolvedIssues(config, github, issues, activeMarkers, logger, counts) {
+async function closeResolvedIssues(config, github, issues, activeMarkers, claimed, logger, counts) {
   const profilePrefix = getIssueProfilePrefix(config);
 
   for (const issue of issues) {
-    if (issue.pull_request || isClosed(issue) || !issue.body?.includes(profilePrefix)) continue;
+    if (issue.pull_request || isClosed(issue) || claimed.has(issue.number) || !issue.body?.includes(profilePrefix)) continue;
     if ([...activeMarkers].some((marker) => issue.body.includes(marker))) continue;
 
     try {
@@ -150,9 +191,11 @@ async function syncIssuesForFindings(config, github, scanFindings, logger) {
   await github.ensureLabel();
   const issues = (await github.getExistingIssues()).filter((issue) => !issue.pull_request);
 
+  const claimed = new Set();
+
   for (const finding of findings) {
     try {
-      await syncFinding(config, github, issues, finding, logger, counts);
+      await syncFinding(config, github, issues, finding, logger, counts, claimed);
     } catch (error) {
       logger.error(`  failed to sync issue: ${finding.title}`, error.message);
     }
@@ -160,7 +203,7 @@ async function syncIssuesForFindings(config, github, scanFindings, logger) {
 
   if (canClose) {
     const activeMarkers = new Set(findings.map((finding) => getIssueMarker(config, finding)));
-    await closeResolvedIssues(config, github, issues, activeMarkers, logger, counts);
+    await closeResolvedIssues(config, github, issues, activeMarkers, claimed, logger, counts);
   }
 
   return counts;
