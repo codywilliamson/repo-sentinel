@@ -6,6 +6,8 @@
 
 - Trivy dependency findings are grouped into one issue per package, installed version, and lockfile instead of one per CVE, and updated in place on later runs.
 - Closed issues are now matched by their fingerprint marker: an issue closed as "not planned" is not re-filed, and one closed as "completed" whose finding is still present is reopened instead of duplicated. Exact-title matches also adopt older unmarked issues.
+- The same CVE in two installed versions of a package now files one issue per version instead of dropping the second.
+- Upgrading from v0.3.4 adopts existing per-CVE issues into the grouped issue and closes the leftover duplicates. Findings whose old issues were all closed as "not planned" stay suppressed.
 
 ## [0.3.4] - 2026-09-26
 
