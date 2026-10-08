@@ -180,6 +180,12 @@ export function createGitHubClient(config, deps = {}) {
       });
       return true;
     },
+    async commentOnIssue(issueNumber, body) {
+      return ghApi(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+    },
     async reopenIssue(issueNumber) {
       return ghApi(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
         method: "PATCH",

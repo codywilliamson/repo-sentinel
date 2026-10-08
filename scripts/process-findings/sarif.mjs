@@ -75,13 +75,18 @@ export function parseSarif(filePath, threshold = "MEDIUM") {
       };
 
       finding.title = `[${severity}] ${finding.id}: ${truncate(finding.message, 80)}`;
-      finding.dedupKey = `${finding.id}::${finding.file}`;
+      finding.dedupKey = `${finding.id}::${finding.file}::${getPackageIdentity(finding.message)}`;
 
       findings.push(finding);
     }
   }
 
   return findings;
+}
+
+// the same cve can hit several installed versions of a package in one lockfile
+function getPackageIdentity(message) {
+  return (message.match(/^(?:Package|Installed Version): .+$/gm) || []).join("|");
 }
 
 export function resolveSeverity(result, rule) {

@@ -14,6 +14,7 @@ function createMockGithub() {
     closeIssue: [],
     updateIssue: [],
     reopenIssue: [],
+    commentOnIssue: [],
     createPullRequestComment: [],
     updatePullRequestComment: [],
   };
@@ -32,6 +33,9 @@ function createMockGithub() {
     async updateIssue(issue, finding) {
       calls.updateIssue.push({ number: issue.number, finding });
       return true;
+    },
+    async commentOnIssue(number, body) {
+      calls.commentOnIssue.push({ number, body });
     },
     async reopenIssue(number) {
       calls.reopenIssue.push(number);
@@ -575,4 +579,60 @@ test("updating an issue skips the write when title and body already match", asyn
   assert.equal(requests.length, 0);
   assert.equal(await github.updateIssue({ ...upToDate, title: "old" }, finding), true);
   assert.equal(requests[0].options.method, "PATCH");
+});
+
+const legacyMarker = (id, config = syncConfig) =>
+  getIssueMarker(config, { id, file: "package-lock.json", tool: "Trivy" });
+
+test("the same cve in two installed versions of a package yields two grouped issues", async () => {
+  const github = createMockGithub();
+  const dir = await mkdtemp(join(tmpdir(), "repo-sentinel-test-"));
+  try {
+    await writeFile(join(dir, "a.sarif"), JSON.stringify(buildTrivyPackage("undici", "6.25.0", [["CVE-2026-1", "5.0", "6.26.0"]])));
+    await writeFile(join(dir, "b.sarif"), JSON.stringify(buildTrivyPackage("undici", "7.29.0", [["CVE-2026-1", "5.0", "7.30.0"]])));
+    const result = await processFindings({ ...syncConfig, sarifDir: dir }, { github, logger: quietLogger });
+    assert.equal(result.createdIssues, 2);
+    assert.deepEqual(github.calls.createIssue.map((issue) => issue.id).sort(), ["undici@6.25.0", "undici@7.29.0"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy per-cve issues: all not planned keeps the group suppressed", async () => {
+  const github = createMockGithub();
+  github.existingIssues = ["CVE-2026-1", "CVE-2026-2"].map((id, index) => ({
+    number: 10 + index, state: "closed", state_reason: "not_planned", title: id, body: legacyMarker(id),
+  }));
+  const result = await runWithTrivy(undiciScan, github);
+  assert.equal(result.createdIssues, 0);
+  assert.equal(result.skippedIssues, 1);
+  assert.equal(github.calls.updateIssue.length, 0);
+});
+
+test("legacy per-cve issues: one open issue is adopted and the other open ones are closed as duplicates", async () => {
+  const github = createMockGithub();
+  github.existingIssues = [
+    { number: 12, state: "open", title: "CVE-2026-3", body: legacyMarker("CVE-2026-3") },
+    { number: 11, state: "open", title: "CVE-2026-2", body: legacyMarker("CVE-2026-2") },
+    { number: 10, state: "closed", state_reason: "not_planned", title: "CVE-2026-1", body: legacyMarker("CVE-2026-1") },
+  ];
+  const config = { ...syncConfig, closeResolvedIssues: true, fullDefaultBranchScan: true };
+  const result = await runWithTrivy(undiciScan, github, config);
+
+  assert.equal(result.createdIssues, 0);
+  assert.equal(result.updatedIssues, 1);
+  assert.equal(github.calls.updateIssue[0].number, 12);
+  assert.deepEqual(github.calls.closeIssue, [11]);
+  assert.match(github.calls.commentOnIssue[0].body, /#12/);
+});
+
+test("legacy per-cve issues: a completed-only mix reopens one into the group", async () => {
+  const github = createMockGithub();
+  github.existingIssues = [
+    { number: 21, state: "closed", state_reason: "completed", title: "CVE-2026-2", body: legacyMarker("CVE-2026-2") },
+    { number: 20, state: "closed", state_reason: "not_planned", title: "CVE-2026-1", body: legacyMarker("CVE-2026-1") },
+  ];
+  const result = await runWithTrivy(undiciScan, github);
+  assert.equal(result.createdIssues, 0);
+  assert.deepEqual(github.calls.reopenIssue, [21]);
 });
