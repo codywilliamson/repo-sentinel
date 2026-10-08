@@ -8,16 +8,16 @@ From your project root:
 
 ```bash
 # bash / macOS / Linux
-curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.sh | bash
+curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.5/install.sh | bash
 
 # powershell / Windows
-irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.ps1 | iex
+irm https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.5/install.ps1 | iex
 ```
 
 Options:
 
 ```bash
-./install.sh --ref "v0.3.4" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
+./install.sh --ref "v0.3.5" --languages "javascript-typescript,csharp" --threshold "HIGH" --pr-comment-copilot
 ```
 
 This drops a thin caller workflow into `.github/workflows/security-scan.yml` — all scanning logic stays in this repo. Installers pin an exact release by default and also accept a full commit SHA for immutable deployments.
@@ -59,6 +59,15 @@ All options are set in the caller workflow (`security-scan.yml` in your repo):
 
 Resolved-issue closure is opt-in. It runs only after both Trivy and CodeQL succeed on the default branch, and only touches repo-sentinel issues created with the same severity threshold, Trivy scanner set and skipped directories, and CodeQL languages. Older issues have no scan marker and require one-time manual review. Pull request runs and incomplete scans never close issues.
 
+### Issue lifecycle
+
+Every issue carries a hidden fingerprint marker, so later runs find it again instead of filing a new one.
+
+- Trivy dependency findings are grouped into one issue per package, installed version, and lockfile. The title shows the highest severity and the CVEs are listed inside; the issue is edited in place as the list changes. A new installed version is a new issue, and with `close-resolved-issues` the old one is closed.
+- CodeQL and other findings stay one issue per alert.
+- An issue closed as "not planned" is never re-filed or reopened. An issue closed as "completed" whose finding is still present is reopened rather than duplicated.
+- Unmarked issues from older releases are only adopted when the title matches exactly; the per-CVE issues they filed for dependencies need a one-time manual close.
+
 Caller workflows need `issues: write` for issue creation and sticky PR comments. repo-sentinel writes PR summaries through GitHub issue comments, so `pull-requests: write` is not required.
 
 ### Self-hosted runners
@@ -98,12 +107,12 @@ Existing installs are easy to update because the caller workflow is intentionall
 
 1. Re-run the installer to create a new workflow. Existing workflows are preserved; pass `--update` or `-Update` to update a repo-sentinel workflow ref. Updates preserve existing branch filters, so change any stale `main` filters to your repository's actual default branch when upgrading. The installer writes a `.repo-sentinel-backup` before an update and refuses to overwrite unrelated workflows.
 2. Choose your ref strategy:
-   - pin to a release tag such as `@v0.3.4` for reproducible runs
+   - pin to a release tag such as `@v0.3.5` for reproducible runs
    - pin to a full commit SHA when your policy requires immutable references
    - use Dependabot's GitHub Actions update PRs to review later releases
 3. Decide how you want to adopt PR comments:
    - Repos pinned to an older release keep their existing behavior until they move to a newer ref
-   - Repos updated to `@v0.3.4` can leave `comment-pr-findings: true` to enable sticky PR comments
+   - Repos updated to `@v0.3.5` can leave `comment-pr-findings: true` to enable sticky PR comments
    - Set `comment-pr-findings: false` if you want to keep the legacy issue-only behavior after updating
    - Set `pr-comment-copilot-tag: true` if you also want the PR comment to tag `@copilot`
 
@@ -112,7 +121,7 @@ Example pinned upgrade:
 ```yaml
 jobs:
   security-scan:
-    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.3.4
+    uses: codywilliamson/repo-sentinel/.github/workflows/security-scan.yml@v0.3.5
     with:
       comment-pr-findings: true
       pr-comment-copilot-tag: true

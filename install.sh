@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # repo-sentinel installer
-# usage: curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.4/install.sh | bash
-# or:    ./install.sh [--ref "v0.3.4"] [--languages "javascript-typescript,python"] [--threshold "MEDIUM"] [--no-copilot]
+# usage: curl -sL https://raw.githubusercontent.com/codywilliamson/repo-sentinel/v0.3.5/install.sh | bash
+# or:    ./install.sh [--ref "v0.3.5"] [--languages "javascript-typescript,python"] [--threshold "MEDIUM"] [--no-copilot]
 
 SENTINEL_REPO="codywilliamson/repo-sentinel"
 SENTINEL_BRANCH=""
@@ -14,7 +14,7 @@ DEPENDABOT_DIR=".github"
 DEPENDABOT_FILE="${DEPENDABOT_DIR}/dependabot.yml"
 
 # defaults
-REF="v0.3.4"
+REF="v0.3.5"
 LANGUAGES="javascript-typescript"
 THRESHOLD="MEDIUM"
 COPILOT="true"
@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
       echo "usage: install.sh [options]"
       echo ""
       echo "options:"
-      echo "  --ref <git-ref>       Workflow ref to pin (default: v0.3.4)"
+      echo "  --ref <git-ref>       Workflow ref to pin (default: v0.3.5)"
       echo "  --languages <langs>   CodeQL languages (default: javascript-typescript)"
       echo "  --threshold <level>   Severity threshold: LOW, MEDIUM, HIGH, CRITICAL (default: MEDIUM)"
       echo "  --no-copilot          Don't auto-assign issues to Copilot"

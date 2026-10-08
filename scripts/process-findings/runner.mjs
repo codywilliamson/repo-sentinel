@@ -1,5 +1,6 @@
 import { createGitHubClient, isGitHubIntegrationPermissionError } from "./github-client.mjs";
 import { buildPullRequestComment, isPullRequestContext, PR_COMMENT_MARKER } from "./pr-comments.mjs";
+import { groupDependencyFindings } from "./group.mjs";
 import { getIssueMarker, getIssueProfilePrefix } from "./issues.mjs";
 import { dedupeFindings, findSarifFiles, parseSarif } from "./sarif.mjs";
 
@@ -69,56 +70,100 @@ function buildDryRunResult(config, findings, logger) {
   };
 }
 
-async function syncIssuesForFindings(config, github, findings, logger) {
-  let createdIssues = 0;
-  let skippedIssues = 0;
-  let closedIssues = 0;
+const NOT_PLANNED = "not_planned";
+const FOREIGN_MARKER_PREFIX = "<!-- repo-sentinel:issue:";
+
+function isClosed(issue) {
+  return issue.state === "closed";
+}
+
+// newest-first list: prefer an open match, else the newest closed one
+function findIssueForFinding(config, issues, finding) {
+  const marker = getIssueMarker(config, finding);
+  const byMarker = issues.filter((issue) => issue.body?.includes(marker));
+  const candidates = byMarker.length > 0
+    ? byMarker
+    : issues.filter((issue) => issue.title === finding.title && !issue.body?.includes(FOREIGN_MARKER_PREFIX));
+
+  return candidates.find((issue) => !isClosed(issue)) || candidates[0];
+}
+
+async function syncFinding(config, github, issues, finding, logger, counts) {
+  const issue = findIssueForFinding(config, issues, finding);
+
+  if (!issue) {
+    const created = await github.createIssue(finding);
+    logger.log(`  created #${created.number}: ${finding.title}`);
+    counts.createdIssues += 1;
+    return;
+  }
+
+  if (isClosed(issue) && issue.state_reason === NOT_PLANNED) {
+    logger.log(`  skip (closed as not planned #${issue.number}): ${finding.title}`);
+    counts.skippedIssues += 1;
+    return;
+  }
+
+  if (isClosed(issue)) {
+    await github.reopenIssue(issue.number);
+    logger.log(`  reopened #${issue.number}: ${finding.title}`);
+    counts.reopenedIssues += 1;
+  }
+
+  if (await github.updateIssue(issue, finding)) {
+    logger.log(`  updated #${issue.number}: ${finding.title}`);
+    counts.updatedIssues += 1;
+  } else if (!isClosed(issue)) {
+    logger.log(`  skip (up to date #${issue.number}): ${finding.title}`);
+    counts.skippedIssues += 1;
+  }
+}
+
+async function closeResolvedIssues(config, github, issues, activeMarkers, logger, counts) {
+  const profilePrefix = getIssueProfilePrefix(config);
+
+  for (const issue of issues) {
+    if (issue.pull_request || isClosed(issue) || !issue.body?.includes(profilePrefix)) continue;
+    if ([...activeMarkers].some((marker) => issue.body.includes(marker))) continue;
+
+    try {
+      await github.closeIssue(issue.number);
+      logger.log(`  closed resolved issue #${issue.number}`);
+      counts.closedIssues += 1;
+    } catch (error) {
+      logger.error(`  failed to close resolved issue #${issue.number}`, error.message);
+    }
+  }
+}
+
+async function syncIssuesForFindings(config, github, scanFindings, logger) {
+  const counts = { createdIssues: 0, skippedIssues: 0, updatedIssues: 0, reopenedIssues: 0, closedIssues: 0 };
   const canClose = config.createIssues && config.closeResolvedIssues &&
     config.fullDefaultBranchScan && !isPullRequestContext(config);
 
-  if (!config.createIssues || (findings.length === 0 && !canClose)) {
-    return { createdIssues, skippedIssues, closedIssues };
+  if (!config.createIssues || (scanFindings.length === 0 && !canClose)) {
+    return counts;
   }
 
+  const findings = groupDependencyFindings(scanFindings);
+
   await github.ensureLabel();
-  const existingIssues = await github.getExistingIssues();
-  const existingTitles = new Set(existingIssues.map((issue) => issue.title));
-  const activeMarkers = new Set(findings.map((finding) => getIssueMarker(config, finding)));
+  const issues = (await github.getExistingIssues()).filter((issue) => !issue.pull_request);
 
   for (const finding of findings) {
-    const marker = getIssueMarker(config, finding);
-    if (existingTitles.has(finding.title) || existingIssues.some((issue) => issue.body?.includes(marker))) {
-      logger.log(`  skip (exists): ${finding.title}`);
-      skippedIssues += 1;
-      continue;
-    }
-
     try {
-      const issue = await github.createIssue(finding);
-      logger.log(`  created #${issue.number}: ${finding.title}`);
-      createdIssues += 1;
+      await syncFinding(config, github, issues, finding, logger, counts);
     } catch (error) {
-      logger.error(`  failed to create issue: ${finding.title}`, error.message);
+      logger.error(`  failed to sync issue: ${finding.title}`, error.message);
     }
   }
 
   if (canClose) {
-    const profilePrefix = getIssueProfilePrefix(config);
-    for (const issue of existingIssues) {
-      if (issue.pull_request || !issue.body?.includes(profilePrefix)) continue;
-      if ([...activeMarkers].some((marker) => issue.body.includes(marker))) continue;
-
-      try {
-        await github.closeIssue(issue.number);
-        logger.log(`  closed resolved issue #${issue.number}`);
-        closedIssues += 1;
-      } catch (error) {
-        logger.error(`  failed to close resolved issue #${issue.number}`, error.message);
-      }
-    }
+    const activeMarkers = new Set(findings.map((finding) => getIssueMarker(config, finding)));
+    await closeResolvedIssues(config, github, issues, activeMarkers, logger, counts);
   }
 
-  return { createdIssues, skippedIssues, closedIssues };
+  return counts;
 }
 
 async function upsertPullRequestComment(config, github, findings, logger, warn) {
@@ -172,12 +217,7 @@ export async function processFindings(config, deps = {}) {
   }
 
   const github = deps.github || createGitHubClient(config);
-  const { createdIssues, skippedIssues, closedIssues } = await syncIssuesForFindings(
-    config,
-    github,
-    findings,
-    logger
-  );
+  const issueCounts = await syncIssuesForFindings(config, github, findings, logger);
   const prCommentAction = await upsertPullRequestComment(
     config,
     github,
@@ -187,14 +227,12 @@ export async function processFindings(config, deps = {}) {
   );
 
   logger.log(
-    `\n  done: ${createdIssues} issue(s) created, ${skippedIssues} skipped, ${closedIssues} closed, PR comment ${prCommentAction}`
+    `\n  done: ${issueCounts.createdIssues} issue(s) created, ${issueCounts.updatedIssues} updated, ${issueCounts.reopenedIssues} reopened, ${issueCounts.skippedIssues} skipped, ${issueCounts.closedIssues} closed, PR comment ${prCommentAction}`
   );
 
   return {
     findingsCount: findings.length,
-    createdIssues,
-    skippedIssues,
-    closedIssues,
+    ...issueCounts,
     prCommentAction,
   };
 }
